@@ -1,0 +1,12 @@
+#cloud-config
+
+coreos:
+  update:
+    reboot-strategy: "off"
+  units:
+    - name: update-engine.service
+      command: stop
+      enable: false
+    - name: locksmithd.service
+      command: stop
+      enable: false

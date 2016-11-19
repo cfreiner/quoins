@@ -46,6 +46,10 @@ variable "security_group_ids" {
   description = "A comma separated lists of security group IDs"
 }
 
+variable "availability_zone" {
+  description = "An availability zone to launch the instance."
+}
+
 variable "subnet_id" {
   description = "An external subnet id."
 }
@@ -73,6 +77,7 @@ variable "cost_center" {
 resource "aws_instance" "bastion" {
   ami                    = "${var.bastion_ami_id}"
   instance_type          = "${var.bastion_instance_type}"
+  availability_zone      = "${var.availability_zone}"
   subnet_id              = "${var.subnet_id}"
   key_name               = "${var.bastion_key_name}"
   vpc_security_group_ids = ["${split(",",var.security_group_ids)}"]

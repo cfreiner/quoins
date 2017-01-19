@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+
+# etcd aws operator manages etcd clusters atop Amazon Web Services
+# Features:
+#   Create
+#   Resize
+
+# # Coding Conventions
+#
+# * globals are `like_this`
+# * locals are `_like_this`
+# * exported values are `LIKE_THIS`
+
+# Undefined variables are errors
+set -u
+
+main() {
+  set_globals
+
+  # If the script has already run just exit
+  if [ -f "$etcd_environment_file_path" ]; then
+    say "$etcd_environment_file_path file already created, exiting"
+    exit 0
+  fi
+
+  local _etcd_members="$(run get_members)"
+  local _etcd_existing_peer_names=""
+  local _etcd_existing_peer_urls=""
+
+  if [ $_etcd_members ]; then
+    _etcd_existing_peer_names="$(run get_existing_peer_names $_etcd_members)"
+    _etcd_existing_peer_urls="$(run get_existing_peer_urls $_etcd_members)"
+  fi
+
+  say "Members: $_etcd_members"
+  say "Existing Peer Names: $_etcd_existing_peer_names"
+  say "Existing Peer Urls: $_etcd_existing_peer_urls"
+
+  # If I am already listed as a member of the cluster assume that this is a new cluster
+  if [[ $_etcd_existing_peer_urls && $_etcd_existing_peer_names != *"$instance_id"* ]]; then
+    join_existing_cluster $_etcd_members
+  else
+    create_cluster_statically
+  fi
+
+  exit 0
+}
+
+set_globals() {
+  # Constants
+  package="etcd-aws-operator"
+  version="0.1.1"
+  etcd_environment_file_path="/var/run/coreos/etcd-environment"
+  ca_cert="/etc/etcd2/ssl/ca-chain.pem"
+  etcd_client_cert="/etc/etcd2/ssl/etcd-client.pem"
+  etcd_client_key="/etc/etcd2/ssl/etcd-client-key.pem"
+
+  # Metadata
+  region="$(run curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq --raw-output '.region')"
+  assert_nz "$region" "Failed to get region"
+  say "Region: $region"
+
+  instance_id="$(run curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+  assert_nz "$instance_id" "Failed to get instance id from instance metadata"
+  say "Instance Id: $instance_id"
+
+  instance_hostname=$(run curl -s http://169.254.169.254/latest/meta-data/hostname)
+  assert_nz "$instance_hostname" "Failed to get instance hostname from instance metadata"
+  say "Instance Hostname: $instance_hostname"
+
+  # Auto Scaling Group
+  asg_name="$(run aws autoscaling describe-auto-scaling-groups --region $region | jq --raw-output '.[] | map(select(.Instances[].InstanceId == "'$instance_id'")) | .[].AutoScalingGroupName')"
+  assert_nz "$asg_name" "Failed to get the auto scaling group name"
+  say "Auto Scaling Group Name: $asg_name"
+
+  # Instances
+  etcd_instance_ids="$(run aws autoscaling describe-auto-scaling-groups --region $region --auto-scaling-group-name $asg_name | jq -r '.AutoScalingGroups[0].Instances[] | select(.LifecycleState  == "InService") | .InstanceId' | xargs)"
+  assert_nz "$etcd_instance_ids" "Failed to get instances that belong to auto scaling group: $asg_name"
+  say "Etcd Instance Identifiers: $etcd_instance_ids"
+}
+
+get_members() {
+  # Build a list of client urls for each instance
+  local _etcd_client_urls="$(run aws ec2 describe-instances --region $region --instance-ids $etcd_instance_ids | jq -r '.Reservations[].Instances | map("https://" + .PrivateDnsName + ":2379")[]')"
+  assert_nz "$_etcd_client_urls" "Unable to find members of auto scaling group: $asg_name"
+
+  # Verify each instance is running etcd excluding this instance by issuing a request to members path
+  local _etcd_members=""
+  for url in $_etcd_client_urls; do
+    case "$url" in
+      *$instance_hostname*) continue;;
+    esac
+
+    local _etcd_members_response="$(run curl -f -s --cacert $ca_cert --cert $etcd_client_cert --key $etcd_client_key $url/v2/members)"
+    if [ "$_etcd_members_response" ]; then
+      _etcd_members="$_etcd_members_response"
+      break
+    fi
+  done
+
+  echo "$_etcd_members"
+}
+
+get_existing_peer_names() {
+  local _etcd_members="$1"
+  echo "$_etcd_members" | jq --raw-output '.[][].name'
+}
+
+get_existing_peer_urls() {
+  local _etcd_members="$1"
+  echo "$_etcd_members" | jq --raw-output '.[][].peerURLs[0]'
+}
+
+get_existing_client_urls() {
+  local _etcd_members="$1"
+  echo "$_etcd_members" | jq --raw-output '.[][].clientURLs[0]'
+}
+
+get_member_url() {
+  local _etcd_members="$1"
+
+  local _etcd_member_url=""
+  local _etcd_existing_client_urls="$(get_existing_client_urls $_etcd_members)"
+  for url in $_etcd_existing_client_urls; do
+    local _etcd_member_health_response="$(run curl -f -s --cacert $ca_cert --cert $etcd_client_cert --key $etcd_client_key $url/health)"
+    if [ "$_etcd_member_health_response" ]; then
+      _etcd_member_url="$url"
+      break
+    fi
+  done
+  echo "$_etcd_member_url"
+}
+
+create_cluster_statically() {
+  # Logic to create a new cluster statically
+  # https://coreos.com/etcd/docs/2.3.7/clustering.html#static
+  say "Creating new cluster statically"
+
+  # Describe instances to build initial cluster
+  local _etcd_initial_cluster="$(run aws ec2 describe-instances --region $region --instance-ids $etcd_instance_ids | jq -r '.Reservations[].Instances | map(.InstanceId + "=https://" + .PrivateDnsName + ":2380")[]' | xargs | sed 's/  */,/g')"
+  assert_nz "$_etcd_initial_cluster" "Unable to get peers from auto scaling group: $asg_name"
+  say "$_etcd_initial_cluster"
+
+  run cat > "$etcd_environment_file_path" <<EOF
+ETCD_INITIAL_CLUSTER_STATE=new
+ETCD_NAME=$instance_id
+ETCD_INITIAL_CLUSTER="$_etcd_initial_cluster"
+EOF
+}
+
+join_existing_cluster() {
+  local _etcd_members="$1"
+
+  local _etcd_member_url="$(get_member_url $_etcd_members)"
+  assert_nz "$_etcd_member_url" "Unable to find a member url: $_etcd_members"
+  say "Using member url: $_etcd_member_url"
+  
+  # Before joining, remove any bad members from the cluster
+  remove_bad_members $_etcd_members
+
+  # Now that we have removed any bad members that may have existed, join the cluster
+  say "Joining existing cluster"
+  local _etcd_existing_peers="$(run get_members | jq --raw-output '.[] | map(.name + "=" + .peerURLs[0]) | .[]' | xargs | sed 's/  */,/g')"
+  assert_nz "_etcd_existing_peers" "Unable build _etcd_existing_peers from: $_etcd_members"
+
+  # Concatenate ourselves to the end of _etcd_existing_peers to create our initial cluster file
+  local _etcd_initial_cluster="${_etcd_existing_peers},${instance_id}=https://${instance_hostname}:2380"
+  say $_etcd_initial_cluster
+
+  # Use the etcd api to join the cluster
+  join_cluster $_etcd_member_url
+
+  cat > "$etcd_environment_file_path" <<EOF
+ETCD_INITIAL_CLUSTER_STATE=existing
+ETCD_NAME=$instance_id
+ETCD_INITIAL_CLUSTER="$_etcd_initial_cluster"
+EOF
+}
+
+remove_bad_members() {
+  local _etcd_members="$1"
+
+  # Logic to remove bad members from cluster
+  say "Removing bad members"
+
+  # Describe the instances that belong to the auto scaling group.
+  # We will use this list to find our bad members
+  local _etcd_peer_urls="$(run aws ec2 describe-instances --region $region --instance-ids $etcd_instance_ids | jq -r '.Reservations[].Instances | map("https://" + .PrivateDnsName + ":2380")[]')"
+
+  # _peer_regexp should be a string with contains("//$ETCD_PEER_URL:") concatenated with or
+  # Example: contains("//ip-172-16-5-131.us-west-2.compute.internal:") or contains("//ip-172-16-4-124.us-west-2.compute.internal:") or contains("//ip-172-16-3-77.us-west-2.compute.internal:")
+  local _peer_regexp="$(run echo "$_etcd_peer_urls" | sed 's/^.*https:\/\/\([a-zA-Z0-9].*\):[0-9]*.*$/contains(\\"\/\/\1:\\")/' | xargs | sed 's/  */ or /g')"
+  assert_nz "$_peer_regexp" "Failed to create peer regular expression"
+  say "Peer Regexp: $_peer_regexp"
+
+  local _bad_peer_ids="$(run echo "$_etcd_members" | jq --raw-output ".[] | map(select(.peerURLs[] | $_peer_regexp | not)) | .[].id")"
+
+  if [ $_bad_peer_ids ]; then
+    local _etcd_member_url="$(get_member_url $_etcd_members)"
+    assert_nz "$_etcd_member_url" "Unable to find a member url: $_etcd_members"
+    say "Using member url: $_etcd_member_url"
+
+    local _delete_ok=204
+    local _delete_gone=410
+    local _retry_times=${RETRY_TIMES:-10}
+    local _status=0
+    local _retry=1
+    local _wait_time=3
+    for bad_peer_id in $_bad_peer_ids; do
+      until [[ $_status = $_delete_ok || $_status =  $_delete_gone || $_retry = $_retry_times ]]; do
+        _status="$(run curl -f -s --cacert $ca_cert --cert $etcd_client_cert --key $etcd_client_key -w %{http_code} "$_etcd_member_url/v2/members/$bad_peer_id" -XDELETE)"
+        say "Removing bad peer $bad_peer_id, retry $((_retry++)), return code $_status."
+        sleep $_wait_time
+      done
+
+      if [[ $_status != $_delete_ok && $_status != $_delete_gone ]]; then
+        error "Unable to remove $bad_peer_id from the cluster: return code $_status."
+      else
+        say "Removed bad peer: $bad_peer_id from the cluster cluster, return code $_status"
+      fi
+    done
+  fi
+}
+
+join_cluster() {
+  local _etcd_member_url="$1"
+
+  # Logic to join an existing cluster
+  # ETCD Members API https://coreos.com/etcd/docs/2.3.7/members_api.html
+  local _add_ok=201
+  local _already_added=409
+
+  # Retry N times before giving up
+  local _retry_times=${RETRY_TIMES:-10}
+
+  local _status=0
+  local _retry=1
+  # Add a sleep time to allow etcd client requests to finish
+  local _wait_time=3
+  until [[ $_status = $_add_ok || $_status = $_already_added || $_retry = $_retry_times ]]; do
+    _status="$(run curl -f -s --cacert $ca_cert --cert $etcd_client_cert --key $etcd_client_key -w %{http_code} -o /dev/null -XPOST "$_etcd_member_url/v2/members" -H "Content-Type: application/json" -d "{\"peerURLs\": [\"https://$instance_hostname:2380\"], \"name\": \"$instance_id\"}")"
+    say "Adding instance ID $instance_id with hostname $instance_hostname, retry $((_retry++)), return code $_status."
+    sleep $_wait_time
+  done
+
+  if [[ $_status != $_add_ok && $_status != $_already_added ]]; then
+    error "Unable to add $instance_hostname to the cluster: return code $_status."
+  else
+    say "Added $instance_hostname to existing cluster, return code $_status"
+  fi
+}
+
+# Standard Utilities
+say() {
+  echo "$package: $1"
+}
+
+say_error() {
+  say "$1" >&2
+}
+
+error() {
+  say "$1" >&2
+  exit 1
+}
+
+assert_nz() {
+  if [ -z "$1" ]; then error "assert_nz: $2"; fi
+}
+
+# Runs a command and prints it to stderr if it fails.
+run() {
+  "$@"
+  local _return_value=$?
+  if [ $_return_value != 0 ]; then
+    say_error "Command Failed: $*"
+  fi
+
+  return $_return_value
+}
+
+main "$@"

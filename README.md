@@ -4,6 +4,9 @@ Quoins are a set of [Terraform][terraform] modules used as building blocks for
 an immutable infrastructure. We carefully curated a set of sane defaults for
 configuring a provider's environment, but also allows you to fully customize it.
 
+[Quoin's][quoin-definition] are best described as cornerstone's for a
+building. They provide load bearing support to a wall.
+
 Currently, the quoins only support [AWS][aws]. The available quoins:
 
 - A network with an internet gateway
@@ -12,9 +15,12 @@ Currently, the quoins only support [AWS][aws]. The available quoins:
 - A key pair
 - A bastion jump host
 - An external elastic load balancer
+- A [Kubernetes][kubernetes] cluster
 
 [terraform]: https://www.terraform.io/
 [aws]: https://aws.amazon.com/
+[quoin-definition]: https://en.wikipedia.org/wiki/Quoin
+[kubernetes]: http://kubernetes.io
 
 ## Requirements
 

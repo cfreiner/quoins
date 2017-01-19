@@ -1,0 +1,831 @@
+#cloud-config
+coreos:
+  update:
+    reboot-strategy: "off"
+  etcd2:
+    proxy: "on"
+    listen-client-urls: "http://127.0.0.1:2379,http://127.0.0.1:4001"
+    peer-trusted-ca-file: "/etc/kubernetes/tls/ca-chain.pem"
+    peer-cert-file: "/etc/kubernetes/tls/etcd-client.pem"
+    peer-key-file: "/etc/kubernetes/tls/etcd-client-key.pem"
+    trusted-ca-file: "/etc/kubernetes/tls/ca-chain.pem"
+    cert-file: "/etc/kubernetes/tls/etcd-client.pem"
+    key-file: "/etc/kubernetes/tls/etcd-client-key.pem"
+  flannel:
+    interface: "$private_ipv4"
+  units:
+    - name: install-kube-system.service
+      command: start
+      runtime: true
+      content: |
+        [Unit]
+        Wants=kubelet.service docker.service
+
+        [Service]
+        Type=simple
+        StartLimitInterval=0
+        RestartSec=10
+        Restart=on-failure
+        ExecStartPre=/usr/bin/systemctl is-active kubelet.service
+        ExecStartPre=/usr/bin/systemctl is-active docker.service
+        ExecStartPre=/usr/bin/curl -s -f http://127.0.0.1:8080/version
+        ExecStart=/opt/bin/install-kube-system.sh
+    - name: kubelet.service
+      command: start
+      content: |
+        [Unit]
+        Wants=flanneld.service
+
+        [Service]
+        ExecStartPre=/usr/bin/systemctl is-active flanneld.service
+        ExecStart=/opt/bin/kubelet-wrapper.sh
+        Restart=always
+        RestartSec=10
+
+        [Install]
+        WantedBy=multi-user.target
+    - name: docker-gc.service
+      content: |
+        [Unit]
+        Description=Cleanup docker images and volumes
+        Requires=docker.service
+        ConditionPathExists=/opt/bin/docker-gc.sh
+
+        [Service]
+        Type=simple
+        ExecStart=/opt/bin/docker-gc.sh
+    - name: docker-gc.timer
+      command: start
+      content: |
+        [Unit]
+        Description=Run docker-gc daily
+
+        [Timer]
+        OnCalendar=daily
+        Unit=docker-gc.service
+    - name: docker-logrotate.service
+      content: |
+        [Unit]
+        Description=Rotate docker container logs
+        Requires=docker.service
+        ConditionPathExists=/etc/logrotate.d/docker-containers.conf
+
+        [Service]
+        Type=simple
+        ExecStart=/usr/sbin/logrotate -f -v /etc/logrotate.d/docker-containers.conf
+    - name: docker-logrotate.timer
+      command: start
+      content: |
+        [Unit]
+        Description=Rotate docker logs hourly
+
+        [Timer]
+        OnCalendar=hourly
+        Unit=docker-logrotate.service
+    - name: docker.service
+      command: start
+      drop-ins:
+        - name: 10-docker-mount.conf
+          content: |
+            [Unit]
+            After=var-lib-docker.mount
+            Wants=var-lib-docker.mount
+        - name: 40-flannel.conf
+          content: |
+            [Unit]
+            Wants=flanneld.service
+
+            [Service]
+            ExecStartPre=/usr/bin/systemctl is-active flanneld.service
+    - name: var-lib-docker.mount
+      command: start
+      content: |
+        [Unit]
+        Description=Mount disk to /var/lib/docker
+        Requires=format-docker-volume.service
+        After=format-docker-volume.service
+        Before=docker.service
+
+        [Mount]
+        What=/dev/xvdf
+        Where=/var/lib/docker
+        Type=ext4
+
+        [Install]
+        RequiredBy=docker.service
+    - name: format-docker-volume.service
+      command: start
+      content: |
+        [Unit]
+        Description=Formats docker EBS volume
+        After=dev-xvdf.device
+        Requires=dev-xvdf.device
+        Before=var-lib-docker.mount
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        Environment="LABEL=var-lib-docker"
+        Environment="DEV=/dev/xvdf"
+        # Do not wipe the disk if it's already being used, so the docker images are persisted across reboots.
+        ExecStart=-/bin/bash -c "if ! findfs LABEL=$LABEL > /tmp/label.$LABEL; then wipefs -a -f $DEV && mkfs.ext4 -T news -F -L $LABEL $DEV && echo wiped; fi"
+
+        [Install]
+        RequiredBy=var-lib-docker.mount
+    - name: flanneld.service
+      drop-ins:
+        - name: 10-etcd.conf
+          content: |
+            [Unit]
+            Wants=etcd2.service
+            After=etcd2.service
+
+            [Service]
+            ExecStartPre=/usr/bin/curl --silent -X PUT -d \
+            "value={\"Network\" : \"${kubernetes_pod_cidr}\", \"Backend\" : {\"Type\" : \"vxlan\"}}" \
+            http://localhost:2379/v2/keys/coreos.com/network/config?prevExist=false
+    - name: etcd2.service
+      command: start
+      drop-ins:
+        - name: 60-initial-cluster.conf
+          content: |
+            [Unit]
+            Requires=prepare-tls-assets.service
+            After=prepare-tls-assets.service
+
+            [Service]
+            EnvironmentFile=/var/run/coreos/initial-cluster
+    - name: prepare-tls-assets.service
+      command: start
+      content: |
+        [Unit]
+        Description=Prepare etcd2 TLS assets
+        Before=etcd2.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/opt/bin/prepare-tls-assets.sh
+
+        [Install]
+        RequiredBy=etcd2.service
+    - name: update-engine.service
+      command: stop
+      enable: false
+    - name: locksmithd.service
+      command: stop
+      enable: false
+write_files:
+  - path: /etc/environment
+    permissions: 0644
+    content: |
+      COREOS_PUBLIC_IPV4=$public_ipv4
+      COREOS_PRIVATE_IPV4=$private_ipv4
+  - path: /opt/bin/prepare-tls-assets.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      mkdir -p /etc/kubernetes/tls
+      mv /root/cloudinit/tls/*.pem /etc/kubernetes/tls
+  - path: /opt/bin/docker-gc.sh
+    permissions: 0700
+    owner: root
+    content: |
+      #!/usr/bin/bash
+
+      /usr/bin/docker rm -v $(docker ps -a -q -f status=exited)
+      /usr/bin/docker rmi $(docker images -q -f dangling=true)
+      /usr/bin/docker volume rm $(docker volume ls -q -f dangling=true)
+  - path: /etc/logrotate.d/docker-containers.conf
+    permissions: 0644
+    owner: root
+    content: |
+      /var/lib/docker/containers/*/*.log {
+        rotate 5
+        copytruncate
+        missingok
+        notifempty
+        compress
+        maxsize 10M
+        daily
+        create 0644 root root
+      }
+  - path: /opt/bin/kubelet-wrapper.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/usr/bin/bash
+
+      set -e
+
+      if [ ! -f /opt/bin/kubelet ]; then
+        mkdir -p /opt/bin
+        curl -L -o /opt/bin/kubelet https://s3-us-west-2.amazonaws.com/concur-native-binarys/kubernetes/${kubernetes_version}/kubelet
+        chmod 700 /opt/bin/kubelet
+      fi
+
+      /opt/bin/kubelet \
+        --api-servers=http://localhost:8080 \
+        --register-schedulable=false \
+        --allow-privileged=true \
+        --cadvisor-port=0 \
+        --config=/etc/kubernetes/manifests \
+        --cluster-dns=${kubernetes_dns_service_ip} \
+        --cluster-domain=cluster.local \
+        --logtostderr=true \
+        --v=2
+  - path: /opt/bin/install-kube-system.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/usr/bin/bash
+
+      set -e
+
+      # Kube System Namespace
+      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kube-system.json" "http://127.0.0.1:8080/api/v1/namespaces"
+      
+      # Kube DNS Addon
+      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kube-dns-rc.json" \
+        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/replicationcontrollers"
+      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kube-dns-svc.json" \
+        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
+      
+      # Fluentd/ElasticSearch/Kibana Logging Addon
+      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/es-controller.json" \
+        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/replicationcontrollers"
+      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/es-service.json" \
+        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
+      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kibana-controller.json" \
+        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/replicationcontrollers"
+      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kibana-service.json" \
+        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
+  - path: /etc/kubernetes/manifests/kube-proxy.yaml
+    content: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: kube-proxy
+        namespace: kube-system
+      spec:
+        hostNetwork: true
+        containers:
+        - name: kube-proxy
+          image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          command:
+          - /hyperkube
+          - proxy
+          - --master=http://127.0.0.1:8080
+          - --proxy-mode=iptables
+          securityContext:
+            privileged: true
+          volumeMounts:
+          - mountPath: /etc/tls/certs
+            name: tls-certs-host
+            readOnly: true
+        volumes:
+        - hostPath:
+            path: /usr/share/ca-certificates
+          name: tls-certs-host
+  - path: /etc/kubernetes/manifests/kube-apiserver.yaml
+    content: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: kube-apiserver
+        namespace: kube-system
+      spec:
+        hostNetwork: true
+        containers:
+        - name: kube-apiserver
+          image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          command:
+          - /hyperkube
+          - apiserver
+          - --bind-address=0.0.0.0
+          - --etcd-servers=http://localhost:2379
+          - --allow-privileged=true
+          - --service-cluster-ip-range=${kubernetes_service_cidr}
+          - --insecure-bind-address=0.0.0.0
+          - --secure-port=443
+          - --advertise-address=$private_ipv4
+          - --admission-control=NamespaceLifecycle,NamespaceExists,LimitRanger,ServiceAccount,ResourceQuota
+          - --tls-cert-file=/etc/kubernetes/tls/api-server.pem
+          - --tls-private-key-file=/etc/kubernetes/tls/api-server-key.pem
+          - --client-ca-file=/etc/kubernetes/tls/ca-chain.pem
+          - --service-account-key-file=/etc/kubernetes/tls/api-server-key.pem
+          - --runtime-config=extensions/v1beta1/deployments=true,extensions/v1beta1/daemonsets=true,extensions/v1beta1=true,extensions/v1beta1/thirdpartyresources=true
+          - --cloud-provider=aws
+          ports:
+          - containerPort: 443
+            hostPort: 443
+            name: https
+          - containerPort: 8080
+            hostPort: 8080
+            name: local
+          volumeMounts:
+          - mountPath: /etc/kubernetes/tls
+            name: tls-certs-kubernetes
+            readOnly: true
+          - mountPath: /etc/tls/certs
+            name: tls-certs-host
+            readOnly: true
+        volumes:
+        - hostPath:
+            path: /etc/kubernetes/tls
+          name: tls-certs-kubernetes
+        - hostPath:
+            path: /usr/share/ca-certificates
+          name: tls-certs-host
+  - path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+    content: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: kube-controller-manager
+        namespace: kube-system
+      spec:
+        containers:
+        - name: kube-controller-manager
+          image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          command:
+          - /hyperkube
+          - controller-manager
+          - --master=http://127.0.0.1:8080
+          - --leader-elect=true
+          - --service-account-private-key-file=/etc/kubernetes/tls/api-server-key.pem
+          - --root-ca-file=/etc/kubernetes/tls/ca-chain.pem
+          - --cloud-provider=aws
+          livenessProbe:
+            httpGet:
+              host: 127.0.0.1
+              path: /healthz
+              port: 10252
+            initialDelaySeconds: 15
+            timeoutSeconds: 1
+          volumeMounts:
+          - mountPath: /etc/kubernetes/tls
+            name: tls-certs-kubernetes
+            readOnly: true
+          - mountPath: /etc/tls/certs
+            name: tls-certs-host
+            readOnly: true
+        hostNetwork: true
+        volumes:
+        - hostPath:
+            path: /etc/kubernetes/tls
+          name: tls-certs-kubernetes
+        - hostPath:
+            path: /usr/share/ca-certificates
+          name: tls-certs-host
+  - path: /etc/kubernetes/manifests/kube-scheduler.yaml
+    content: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: kube-scheduler
+        namespace: kube-system
+      spec:
+        hostNetwork: true
+        containers:
+        - name: kube-scheduler
+          image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          command:
+          - /hyperkube
+          - scheduler
+          - --master=http://127.0.0.1:8080
+          - --leader-elect=true
+          livenessProbe:
+            httpGet:
+              host: 127.0.0.1
+              path: /healthz
+              port: 10251
+            initialDelaySeconds: 15
+            timeoutSeconds: 1
+  - path: /srv/kubernetes/manifests/kube-system.json
+    content: |
+      {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {
+          "name": "kube-system"
+        }
+      }
+  - path: /srv/kubernetes/manifests/kube-dns-rc.json
+    content: |
+      {
+        "apiVersion": "v1",
+        "kind": "ReplicationController",
+        "metadata": {
+          "labels": {
+            "k8s-app": "kube-dns",
+            "kubernetes.io/cluster-service": "true",
+            "version": "v11"
+          },
+          "name": "kube-dns-v11",
+          "namespace": "kube-system"
+        },
+        "spec": {
+          "replicas": 1,
+          "selector": {
+            "k8s-app": "kube-dns",
+            "version": "v11"
+          },
+          "template": {
+            "metadata": {
+              "labels": {
+                "k8s-app": "kube-dns",
+                "kubernetes.io/cluster-service": "true",
+                "version": "v11"
+              }
+            },
+            "spec": {
+              "containers": [
+                {
+                  "command": [
+                    "/usr/local/bin/etcd",
+                    "-data-dir",
+                    "/var/etcd/data",
+                    "-listen-client-urls",
+                    "http://127.0.0.1:2379,http://127.0.0.1:4001",
+                    "-advertise-client-urls",
+                    "http://127.0.0.1:2379,http://127.0.0.1:4001",
+                    "-initial-cluster-token",
+                    "skydns-etcd"
+                  ],
+                  "image": "gcr.io/google_containers/etcd-amd64:2.2.1",
+                  "name": "etcd",
+                  "resources": {
+                    "limits": {
+                      "cpu": "100m",
+                      "memory": "500Mi"
+                    },
+                    "requests": {
+                      "cpu": "100m",
+                      "memory": "50Mi"
+                    }
+                  },
+                  "volumeMounts": [
+                    {
+                      "mountPath": "/var/etcd/data",
+                      "name": "etcd-storage"
+                    }
+                  ]
+                },
+                {
+                  "args": [
+                    "--domain=cluster.local"
+                  ],
+                  "image": "gcr.io/google_containers/kube2sky:1.14",
+                  "livenessProbe": {
+                    "failureThreshold": 5,
+                    "httpGet": {
+                      "path": "/healthz",
+                      "port": 8080,
+                      "scheme": "HTTP"
+                    },
+                    "initialDelaySeconds": 60,
+                    "successThreshold": 1,
+                    "timeoutSeconds": 5
+                  },
+                  "name": "kube2sky",
+                  "readinessProbe": {
+                    "httpGet": {
+                      "path": "/readiness",
+                      "port": 8081,
+                      "scheme": "HTTP"
+                    },
+                    "initialDelaySeconds": 30,
+                    "timeoutSeconds": 5
+                  },
+                  "resources": {
+                    "limits": {
+                      "cpu": "100m",
+                      "memory": "200Mi"
+                    },
+                    "requests": {
+                      "cpu": "100m",
+                      "memory": "50Mi"
+                    }
+                  }
+                },
+                {
+                  "args": [
+                    "-machines=http://127.0.0.1:4001",
+                    "-addr=0.0.0.0:53",
+                    "-ns-rotate=false",
+                    "-domain=cluster.local."
+                  ],
+                  "image": "gcr.io/google_containers/skydns:2015-10-13-8c72f8c",
+                  "name": "skydns",
+                  "ports": [
+                    {
+                      "containerPort": 53,
+                      "name": "dns",
+                      "protocol": "UDP"
+                    },
+                    {
+                      "containerPort": 53,
+                      "name": "dns-tcp",
+                      "protocol": "TCP"
+                    }
+                  ],
+                  "resources": {
+                    "limits": {
+                      "cpu": "100m",
+                      "memory": "200Mi"
+                    },
+                    "requests": {
+                      "cpu": "100m",
+                      "memory": "50Mi"
+                    }
+                  }
+                },
+                {
+                  "args": [
+                    "-cmd=nslookup kubernetes.default.svc.cluster.local 127.0.0.1 >/dev/null",
+                    "-port=8080"
+                  ],
+                  "image": "gcr.io/google_containers/exechealthz:1.0",
+                  "name": "healthz",
+                  "ports": [
+                    {
+                      "containerPort": 8080,
+                      "protocol": "TCP"
+                    }
+                  ],
+                  "resources": {
+                    "limits": {
+                      "cpu": "10m",
+                      "memory": "20Mi"
+                    },
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "20Mi"
+                    }
+                  }
+                }
+              ],
+              "dnsPolicy": "Default",
+              "volumes": [
+                {
+                  "emptyDir": {},
+                  "name": "etcd-storage"
+                }
+              ]
+            }
+          }
+        }
+      }
+  - path: /srv/kubernetes/manifests/kube-dns-svc.json
+    content: |
+      {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {
+          "name": "kube-dns",
+          "namespace": "kube-system",
+          "labels": {
+            "k8s-app": "kube-dns",
+            "kubernetes.io/name": "KubeDNS",
+            "kubernetes.io/cluster-service": "true"
+          }
+        },
+        "spec": {
+          "clusterIP": "${kubernetes_dns_service_ip}",
+          "ports": [{
+            "protocol": "UDP",
+            "name": "dns",
+            "port": 53
+          }, {
+            "protocol": "TCP",
+            "name": "dns-tcp",
+            "port": 53
+          }],
+          "selector": {
+            "k8s-app": "kube-dns"
+          }
+        }
+      }
+  - path: /etc/kubernetes/manifests/fluentd-es.yaml
+    content: |
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: fluentd-elasticsearch
+        namespace: kube-system
+        labels:
+          k8s-app: fluentd-logging
+      spec:
+        containers:
+        - name: fluentd-elasticsearch
+          image: gcr.io/google_containers/fluentd-elasticsearch:1.15
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+          - name: varlog
+            mountPath: /var/log
+          - name: varlibdockercontainers
+            mountPath: /var/lib/docker/containers
+            readOnly: true
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+  - path: /srv/kubernetes/manifests/es-controller.json
+    content: |
+      {
+        "apiVersion": "v1",
+        "kind": "ReplicationController",
+        "metadata": {
+          "name": "elasticsearch-logging-v1",
+          "namespace": "kube-system",
+          "labels": {
+            "k8s-app": "elasticsearch-logging",
+            "version": "v1",
+            "kubernetes.io/cluster-service": "true"
+          }
+        },
+        "spec": {
+          "replicas": 2,
+          "selector": {
+            "k8s-app": "elasticsearch-logging",
+            "version": "v1"
+          },
+          "template": {
+            "metadata": {
+              "labels": {
+                "k8s-app": "elasticsearch-logging",
+                "version": "v1",
+                "kubernetes.io/cluster-service": "true"
+              }
+            },
+            "spec": {
+              "containers": [
+                {
+                  "image": "gcr.io/google_containers/elasticsearch:1.8",
+                  "name": "elasticsearch-logging",
+                  "resources": {
+                    "limits": {
+                      "cpu": "100m"
+                    },
+                    "requests": {
+                      "cpu": "100m"
+                    }
+                  },
+                  "ports": [
+                    {
+                      "containerPort": 9200,
+                      "name": "db",
+                      "protocol": "TCP"
+                    },
+                    {
+                      "containerPort": 9300,
+                      "name": "transport",
+                      "protocol": "TCP"
+                    }
+                  ],
+                  "volumeMounts": [
+                    {
+                      "name": "es-persistent-storage",
+                      "mountPath": "/data"
+                    }
+                  ]
+                }
+              ],
+              "volumes": [
+                {
+                  "name": "es-persistent-storage",
+                  "hostPath": {
+                    "path": "/opt/logging/es"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+  - path: /srv/kubernetes/manifests/es-service.json
+    content: |
+      {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {
+          "name": "elasticsearch-logging",
+          "namespace": "kube-system",
+          "labels": {
+            "k8s-app": "elasticsearch-logging",
+            "kubernetes.io/cluster-service": "true",
+            "kubernetes.io/name": "Elasticsearch"
+          }
+        },
+        "spec": {
+          "ports": [
+            {
+              "port": 9200,
+              "protocol": "TCP",
+              "targetPort": "db"
+            }
+          ],
+          "selector": {
+            "k8s-app": "elasticsearch-logging"
+          }
+        }
+      }
+  - path: /srv/kubernetes/manifests/kibana-controller.json
+    content: |
+      {
+        "apiVersion": "v1",
+        "kind": "ReplicationController",
+        "metadata": {
+          "name": "kibana-logging-v1",
+          "namespace": "kube-system",
+          "labels": {
+            "k8s-app": "kibana-logging",
+            "version": "v1",
+            "kubernetes.io/cluster-service": "true"
+          }
+        },
+        "spec": {
+          "replicas": 1,
+          "selector": {
+            "k8s-app": "kibana-logging",
+            "version": "v1"
+          },
+          "template": {
+            "metadata": {
+              "labels": {
+                "k8s-app": "kibana-logging",
+                "version": "v1",
+                "kubernetes.io/cluster-service": "true"
+              }
+            },
+            "spec": {
+              "containers": [
+                {
+                  "name": "kibana-logging",
+                  "image": "gcr.io/google_containers/kibana:1.3",
+                  "resources": {
+                    "limits": {
+                      "cpu": "100m"
+                    },
+                    "requests": {
+                      "cpu": "100m"
+                    }
+                  },
+                  "env": [
+                    {
+                      "name": "ELASTICSEARCH_URL",
+                      "value": "http://elasticsearch-logging:9200"
+                    }
+                  ],
+                  "ports": [
+                    {
+                      "containerPort": 5601,
+                      "name": "ui",
+                      "protocol": "TCP"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+  - path: /srv/kubernetes/manifests/kibana-service.json
+    content: |
+      {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {
+          "name": "kibana-logging",
+          "namespace": "kube-system",
+          "labels": {
+            "k8s-app": "kibana-logging",
+            "kubernetes.io/cluster-service": "true",
+            "kubernetes.io/name": "Kibana"
+          }
+        },
+        "spec": {
+          "ports": [
+            {
+              "port": 5601,
+              "protocol": "TCP",
+              "targetPort": "ui"
+            }
+          ],
+          "selector": {
+            "k8s-app": "kibana-logging"
+          }
+        }
+      }

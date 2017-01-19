@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+# This script generates an /var/run/coreos/initial-cluster file from /var/run/coreos/etcd-environment
+# and uploads it to s3 which can be downloaded and used by etcd proxies.
+
+package="etcd-aws-proxy"
+version="0.1.1"
+etcd_environment_file_path="/var/run/coreos/etcd-environment"
+etcd_initial_cluster_file_path="/var/run/coreos/initial-cluster"
+discovery_bucket="s3://concur-${QUOIN_NAME}"
+
+if [[ ! -f "$etcd_environment_file_path" ]]; then
+  echo "$package: $etcd_environment_file_path doesn't exist."
+  exit 1
+else
+  if etcd_initial_cluster=$(grep ETCD_INITIAL_CLUSTER= $etcd_environment_file_path); then
+    echo $etcd_initial_cluster > $etcd_initial_cluster_file_path
+  else
+    echo "$package: $etcd_environment_file_path doesn't have ETCD_INITIAL_CLUSTER variable."
+    exit 1
+  fi
+fi
+
+region="$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq --raw-output '.region')"
+if ! aws --region $region s3 ls $discovery_bucket > /dev/null 2>&1 ;
+then
+  aws --region $region s3 mb $discovery_bucket
+fi
+
+aws --region $region s3 cp $etcd_initial_cluster_file_path $discovery_bucket/cloudinit/etcd/$(basename $etcd_initial_cluster_file_path)

@@ -1,0 +1,143 @@
+#cloud-config
+coreos:
+  update:
+    reboot-strategy: "etcd-lock"
+  units:
+    - name: etcd2.service
+      command: start
+      drop-ins:
+        - name: 20-etcd2-cluster.conf
+          content: |
+            [Unit]
+            Wants=var-lib-etcd2.mount etcd-init.service
+            After=var-lib-etcd2.mount etcd-init.service
+
+            [Service]
+            Environment=ETCD_PEER_CLIENT_CERT_AUTH=true
+            Environment=ETCD_PEER_TRUSTED_CA_FILE=/etc/etcd2/tls/ca-chain.pem
+            Environment=ETCD_PEER_CERT_FILE=/etc/etcd2/tls/etcd-peer.pem
+            Environment=ETCD_PEER_KEY_FILE=/etc/etcd2/tls/etcd-peer-key.pem
+
+            Environment=ETCD_CLIENT_CERT_AUTH=true
+            Environment=ETCD_TRUSTED_CA_FILE=/etc/etcd2/tls/ca-chain.pem
+            Environment=ETCD_CERT_FILE=/etc/etcd2/tls/etcd-server.pem
+            Environment=ETCD_KEY_FILE=/etc/etcd2/tls/etcd-server-key.pem
+
+            EnvironmentFile=-/etc/etcd-environment
+            Environment=ETCD_DATA_DIR=/var/lib/etcd2
+            Environment=ETCD_LISTEN_CLIENT_URLS=https://%H:2379
+            Environment=ETCD_ADVERTISE_CLIENT_URLS=https://%H:2379
+            Environment=ETCD_LISTEN_PEER_URLS=https://%H:2380
+            Environment=ETCD_INITIAL_ADVERTISE_PEER_URLS=https://%H:2380
+            PermissionsStartOnly=true
+            ExecStartPre=/usr/bin/systemctl is-active var-lib-etcd2.mount
+            ExecStartPre=/usr/bin/systemctl is-active etcd-init.service
+            ExecStartPre=/usr/bin/sed -i 's/^ETCDCTL_ENDPOINT.*$/ETCDCTL_ENDPOINT=https:\/\/%H:2379/' /etc/environment
+            ExecStartPre=/usr/bin/chown -R etcd:etcd /var/lib/etcd2
+    - name: etcd-init.service
+      command: start
+      content: |
+        [Unit]
+        Description=etcd init
+        Requires=prepare-tls-assets.service docker.service
+        After=prepare-tls-assets.service docker.service
+        Before=etcd2.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        EnvironmentFile=/etc/environment
+        ExecStart=/opt/bin/etcd-init.sh
+
+        [Install]
+        WantedBy=etd2.service
+    - name: prepare-tls-assets.service
+      command: start
+      content: |
+        [Unit]
+        Description=Prepare etcd2 TLS assets
+        Before=etcd-init.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/opt/bin/prepare-tls-assets.sh
+
+        [Install]
+        RequiredBy=etcd-init.service
+    - name: var-lib-etcd2.mount
+      command: start
+      content: |
+        [Unit]
+        Description=Mount disk to /var/lib/etcd2
+        Requires=format-etcd2-volume.service
+        After=format-format-etcd2-volume.service
+        Before=etcd2.service
+
+        [Mount]
+        What=/dev/xvdf
+        Where=/var/lib/etcd2
+        Type=ext4
+
+        [Install]
+        RequiredBy=etcd2.service
+    - name: format-etcd2-volume.service
+      command: start
+      content: |
+        [Unit]
+        Description=Formats etcd2 EBS volume
+        After=dev-xvdf.device
+        Requires=dev-xvdf.device
+        Before=var-lib-etcd2.mount
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        Environment="LABEL=var-lib-etcd2"
+        Environment="DEV=/dev/xvdf"
+        # Do not wipe the disk if it's already being used, so the data is persisted across reboots.
+        ExecStart=-/bin/bash -c "if ! findfs LABEL=$LABEL > /tmp/label.$LABEL; then wipefs -a -f $DEV && mkfs.ext4 -T news -F -L $LABEL $DEV && echo wiped; fi"
+
+        [Install]
+        RequiredBy=var-lib-etcd2.mount
+write_files:
+  - path: /etc/environment
+    permissions: 0644
+    content: |
+      COREOS_PUBLIC_IPV4=$public_ipv4
+      COREOS_PRIVATE_IPV4=$private_ipv4
+      ETCDCTL_CA_FILE=/etc/etcd2/tls/ca-chain.pem
+      ETCDCTL_CERT_FILE=/etc/etcd2/tls/etcd-client.pem
+      ETCDCTL_KEY_FILE=/etc/etcd2/tls/etcd-client-key.pem
+      ETCDCTL_ENDPOINT=
+  - path: /opt/bin/prepare-tls-assets.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      mkdir -p /etc/etcd2/tls
+      mv /root/cloudinit/tls/*.pem /etc/etcd2/tls
+  - path: /opt/bin/etcd-init.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      # Dyamically create/join the etcd cluster by querying autoscaling group
+      image=quay.io/concur_platform/etcd-aws-operator:0.0.1
+      /usr/bin/docker run --rm \
+        --env-file=/etc/quoin-environment \
+        -v /var/run/coreos:/var/run/coreos \
+        -v /etc/etcd2/tls:/etc/etcd2/tls \
+        $image /etcd-aws-operator
+
+      # Upload etcd initial-cluster urls to s3 bucket for etcd proxies to use
+      /usr/bin/docker run --rm \
+        --env-file=/etc/quoin-environment \
+        -v /var/run/coreos:/var/run/coreos \
+        -v /etc/etcd2/tls:/etc/etcd2/tls \
+        $image /etcd-aws-proxy
+
+      # Place etcd-environment
+      /usr/bin/cp /var/run/coreos/etcd-environment /etc/etcd-environment

@@ -71,3 +71,10 @@ To stage the changeset, let's run the plan command:
 To apply the changeset, let's run the apply command:
 
     $ terraform apply plan.bin
+
+## License
+
+Released under the [MIT License][mit-license]. See [LICENSE][license] for more information.
+
+[mit-license]: http://www.opensource.org/licenses/mit-license.php
+[license]: https://github.com/concur/quoins/blob/master/LICENSE

@@ -1,3 +1,38 @@
+/**
+* This module creates an elastic load balancer to be used by instances for exposing services.
+*
+* Usage:
+*
+* ```hcl
+* module "elb-unsecure" {
+*   source        = "github.com/concur/quoins//elb-external"
+*   name          = "elb-unsecure"
+*   vpc_id        = "vpc-123456"
+*   subnet_ids    = "subnet-123456,subnet-123457,subnet-123458"
+*   lb_port       = "80"
+*   instance_port = "30000"
+*   healthcheck   = "/health"
+*   protocol      = "HTTP"
+* }
+
+* module "elb-secure" {
+*   source             = "github.com/concur/quoins//elb-external"
+*   name               = "elb-secure"
+*   vpc_id             = "vpc-123456"
+*   subnet_ids         = "subnet-123456,subnet-123457,subnet-123458"
+*   lb_port            = "443"
+*   instance_port      = "30000"
+*   healthcheck        = "/health"
+*   protocol           = "HTTPS"
+*   ssl_certificate_id = "arn:aws:..."
+* }
+
+* provider "aws" {
+*   region = "us-west-2"
+* }
+* ```
+*/
+
 /*
 * ------------------------------------------------------------------------------
 * Variables
@@ -106,7 +141,7 @@ resource "aws_elb" "external" {
   }
 
   tags {
-    Name        = "${var.name}-balancer"
+    Name = "${var.name}-balancer"
   }
 }
 

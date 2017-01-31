@@ -1,16 +1,19 @@
-/*
+/**
 * This module creates basic security groups to be used by instances.
 *
 * Usage:
-*   module "security_groups" {
-*     source = "github.com/concur/quoins//security-groups"
-*     vpc_id = "vpc-*****"
-*     name   = "quoin"
-*   }
 *
-*   provider "aws" {
-*     region = "us-west-2"
-*   }
+* ```hcl
+* module "security_groups" {
+*   source = "github.com/concur/quoins//security-groups"
+*   vpc_id = "vpc-*****"
+*   name   = "quoin"
+* }
+*
+* provider "aws" {
+*   region = "us-west-2"
+* }
+* ```
 *
 */
 

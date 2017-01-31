@@ -1,6 +1,5 @@
 /**
-*
-* This quoin creates an opinionated [Kubernetes][kubernetes] cluster in AWS. Currently, this
+* This module creates an opinionated [Kubernetes][kubernetes] cluster in AWS. Currently, this
 * quoin only supports the AWS provider and has only been tested in the us-west-2 and eu-central-1
 * regions.
 *
@@ -62,64 +61,66 @@
 *
 * Usage:
 *
-*   module "kubernetes" {
-*     source                                = "github.com/concur/quoins//kubernetes"
-*     name                                  = "prod"
-*     role_type                             = "app1"
-*     cost_center                           = "1"
-*     region                                = "us-west-2"
-*     vpc_id                                = "vpc-1234565"
-*     vpc_cidr                              = "172.16.0.0/16"
-*     internet_gateway_id                   = "igw-123456"
-*     availability_zones                    = "us-west-2a,us-west-2b,us-west-2c"
-*     external_subnets                      = "172.16.0.0/24,172.16.1.0/24,172.16.2.0/24"
-*     internal_subnets                      = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
-*     public_key                            = "${file(format("%s/keys/%s.pub", path.cwd, var.name))}"
-*     kms_key_arn                           = "arn:aws:kms:us-west-2:208127133681:key/709b95f1-90b0-46d3-b1d3-619fb4dfb82a"
-*     root_cert                             = "${file(format("%s/certs/root-ca.pem.enc.base", path.cwd))}"
-*     intermediate_cert                     = "${file(format("%s/certs/intermediate-ca.pem.enc.base", path.cwd))}"
-*     etcd_server_cert                      = "${file(format("%s/certs/etcd-server.pem.enc.base", path.cwd))}"
-*     etcd_server_key                       = "${file(format("%s/certs/etcd-server-key.pem.enc.base", path.cwd))}"
-*     etcd_client_cert                      = "${file(format("%s/certs/etcd-client.pem.enc.base", path.cwd))}"
-*     etcd_client_key                       = "${file(format("%s/certs/etcd-client-key.pem.enc.base", path.cwd))}"
-*     etcd_peer_cert                        = "${file(format("%s/certs/etcd-peer.pem.enc.base", path.cwd))}"
-*     etcd_peer_key                         = "${file(format("%s/certs/etcd-peer-key.pem.enc.base", path.cwd))}"
-*     etcd_instance_type                    = "m3.medium"
-*     etcd_min_size                         = "1"
-*     etcd_max_size                         = "9"
-*     etcd_desired_capacity                 = "1"
-*     etcd_root_volume_size                 = "12"
-*     etcd_data_volume_size                 = "12"
-*     api_server_cert                       = "${file(format("%s/certs/apiserver.pem.enc.base", path.cwd))}"
-*     api_server_key                        = "${file(format("%s/certs/apiserver-key.pem.enc.base", path.cwd))}"
-*     controller_instance_type              = "m3.medium"
-*     controller_min_size                   = "1"
-*     controller_max_size                   = "3"
-*     controller_desired_capacity           = "1"
-*     controller_root_volume_size           = "12"
-*     controller_docker_volume_size         = "12"
-*     node_cert                             = "${file(format("%s/certs/node.pem.enc.base", path.cwd))}"
-*     node_key                              = "${file(format("%s/certs/node-key.pem.enc.base", path.cwd))}"
-*     api_server_client_cert                = "${file(format("%s/certs/apiserver-client.pem.enc.base", path.cwd))}"
-*     api_server_client_key                 = "${file(format("%s/certs/apiserver-client-key.pem.enc.base", path.cwd))}"
-*     node_instance_type                    = "m3.medium"
-*     node_min_size                         = "1"
-*     node_max_size                         = "18"
-*     node_desired_capacity                 = "1"
-*     node_root_volume_size                 = "12"
-*     node_docker_volume_size               = "12"
-*     node_data_volume_size                 = "12"
-*     node_logging_volume_size              = "12"
-*     kubernetes_hyperkube_image_repo       = "gcr.io/google_containers/hyperkube"
-*     kubernetes_version                    = "v1.2.4"
-*     kubernetes_service_cidr               = "10.3.0.1/24"
-*     kubernetes_dns_service_ip             = "10.3.0.10"
-*     kubernetes_pod_cidr                   = "10.2.0.0/16"
-*   }
+* ```hcl
+* module "kubernetes" {
+*   source                                = "github.com/concur/quoins//kubernetes"
+*   name                                  = "prod"
+*   role_type                             = "app1"
+*   cost_center                           = "1"
+*   region                                = "us-west-2"
+*   vpc_id                                = "vpc-1234565"
+*   vpc_cidr                              = "172.16.0.0/16"
+*   internet_gateway_id                   = "igw-123456"
+*   availability_zones                    = "us-west-2a,us-west-2b,us-west-2c"
+*   external_subnets                      = "172.16.0.0/24,172.16.1.0/24,172.16.2.0/24"
+*   internal_subnets                      = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
+*   public_key                            = "${file(format("%s/keys/%s.pub", path.cwd, var.name))}"
+*   kms_key_arn                           = "arn:aws:kms:us-west-2:208127133681:key/709b95f1-90b0-46d3-b1d3-619fb4dfb82a"
+*   root_cert                             = "${file(format("%s/certs/root-ca.pem.enc.base", path.cwd))}"
+*   intermediate_cert                     = "${file(format("%s/certs/intermediate-ca.pem.enc.base", path.cwd))}"
+*   etcd_server_cert                      = "${file(format("%s/certs/etcd-server.pem.enc.base", path.cwd))}"
+*   etcd_server_key                       = "${file(format("%s/certs/etcd-server-key.pem.enc.base", path.cwd))}"
+*   etcd_client_cert                      = "${file(format("%s/certs/etcd-client.pem.enc.base", path.cwd))}"
+*   etcd_client_key                       = "${file(format("%s/certs/etcd-client-key.pem.enc.base", path.cwd))}"
+*   etcd_peer_cert                        = "${file(format("%s/certs/etcd-peer.pem.enc.base", path.cwd))}"
+*   etcd_peer_key                         = "${file(format("%s/certs/etcd-peer-key.pem.enc.base", path.cwd))}"
+*   etcd_instance_type                    = "m3.medium"
+*   etcd_min_size                         = "1"
+*   etcd_max_size                         = "9"
+*   etcd_desired_capacity                 = "1"
+*   etcd_root_volume_size                 = "12"
+*   etcd_data_volume_size                 = "12"
+*   api_server_cert                       = "${file(format("%s/certs/apiserver.pem.enc.base", path.cwd))}"
+*   api_server_key                        = "${file(format("%s/certs/apiserver-key.pem.enc.base", path.cwd))}"
+*   controller_instance_type              = "m3.medium"
+*   controller_min_size                   = "1"
+*   controller_max_size                   = "3"
+*   controller_desired_capacity           = "1"
+*   controller_root_volume_size           = "12"
+*   controller_docker_volume_size         = "12"
+*   node_cert                             = "${file(format("%s/certs/node.pem.enc.base", path.cwd))}"
+*   node_key                              = "${file(format("%s/certs/node-key.pem.enc.base", path.cwd))}"
+*   api_server_client_cert                = "${file(format("%s/certs/apiserver-client.pem.enc.base", path.cwd))}"
+*   api_server_client_key                 = "${file(format("%s/certs/apiserver-client-key.pem.enc.base", path.cwd))}"
+*   node_instance_type                    = "m3.medium"
+*   node_min_size                         = "1"
+*   node_max_size                         = "18"
+*   node_desired_capacity                 = "1"
+*   node_root_volume_size                 = "12"
+*   node_docker_volume_size               = "12"
+*   node_data_volume_size                 = "12"
+*   node_logging_volume_size              = "12"
+*   kubernetes_hyperkube_image_repo       = "gcr.io/google_containers/hyperkube"
+*   kubernetes_version                    = "v1.2.4"
+*   kubernetes_service_cidr               = "10.3.0.1/24"
+*   kubernetes_dns_service_ip             = "10.3.0.10"
+*   kubernetes_pod_cidr                   = "10.2.0.0/16"
+* }
 *
-*   provider "aws" {
-*     region = "us-west-2"
-*   }
+* provider "aws" {
+*   region = "us-west-2"
+* }
+* ```
 *
 */
 

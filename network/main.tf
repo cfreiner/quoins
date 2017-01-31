@@ -1,17 +1,20 @@
-/*
+/**
 * This module creates a single virtual network and routes traffic in and out of
 * the network by creating an internet gateway within a given region.
 *
 * Usage:
-*   module "network" {
-*     source = "github.com/concur/quoins//network"
-*     cidr   = "172.16.0.0/16"
-*     name   = "prod-us-network"
-*   }
 *
-*   provider "aws" {
-*     region = "us-west-2"
-*   }
+* ```hcl
+* module "network" {
+*   source = "github.com/concur/quoins//network"
+*   cidr   = "172.16.0.0/16"
+*   name   = "prod-us-network"
+* }
+*
+* provider "aws" {
+*   region = "us-west-2"
+* }
+* ```
 *
 */
 

@@ -37,7 +37,7 @@ variable "node_max_size" {
 
 variable "node_desired_capacity" {
   description = "The desired capacity of the node cluster."
-  default     = "3"
+  default     = "1"
 }
 
 variable "node_root_volume_size" {

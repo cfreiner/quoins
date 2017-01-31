@@ -1,16 +1,19 @@
-/*
+/**
 * This module creates a key pair to be used by instances.
 *
 * Usage:
-*   module "ssh_key_pair" {
-*     source = "github.com/concur/quoins//key-pair"
-*     key_name   = "quoin-bastion"
-*     public_key = "ssh-rsa skdlfjkljasfkdjjkas;dfjksakj ... email@domain.com"
-*   }
 *
-*   provider "aws" {
-*     region = "us-west-2"
-*   }
+* ```hcl
+* module "ssh_key_pair" {
+*   source = "github.com/concur/quoins//key-pair"
+*   key_name   = "quoin-bastion"
+*   public_key = "ssh-rsa skdlfjkljasfkdjjkas;dfjksakj ... email@domain.com"
+* }
+*
+* provider "aws" {
+*   region = "us-west-2"
+* }
+* ```
 *
 */
 

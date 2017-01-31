@@ -30,26 +30,32 @@ variable "etcd_peer_key" {
 
 variable "etcd_instance_type" {
   description = "The type of instance to use for the etcd cluster. Example: 'm3.medium'"
+  default     = "m3.medium"
 }
 
 variable "etcd_min_size" {
   description = "The minimum size for the etcd cluster. NOTE: Use odd numbers."
+  default     = "1"
 }
 
 variable "etcd_max_size" {
   description = "The maximum size for the etcd cluster. NOTE: Use odd numbers."
+  default     = "9"
 }
 
 variable "etcd_desired_capacity" {
   description = "The desired capacity of the etcd cluster. NOTE: Use odd numbers."
+  default     = "1"
 }
 
 variable "etcd_root_volume_size" {
   description = "Set the desired capacity for the root volume in GB."
+  default     = "12"
 }
 
 variable "etcd_data_volume_size" {
   description = "Set the desired capacity for the data volume used by etcd in GB."
+  default     = "12"
 }
 
 /*

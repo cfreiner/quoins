@@ -1,26 +1,27 @@
-/*
+/**
 * This module creates a bastion instance. The bastion host acts as the
 * "jump point" for the rest of the infrastructure. Since most of our
 * instances aren't exposed to the external internet, the bastion acts as
 * the gatekeeper for any direct SSH access. The bastion is provisioned using
-* the key name that you pass to the stack (and hopefully have stored somewhere).
+* the key name that you pass to the module (and hopefully have stored somewhere).
 * If you ever need to access an instance directly, you can do it by
 * "jumping through" the bastion.
 *
-*    $ terraform output -module=bastion_module_name # print the bastion ip
-*    $ ssh -i <path/to/key> core@<bastion-ip> ssh core@<internal-ip>
-*
 * Usage:
-*    module "bastion" {
-*      source                = "github.com/concur/quoins//bastion"
-*      bastion_ami_id        = "ami-*****"
-*      bastion_instance_type = "t2.micro"
-*      bastion_key_name      = "ssh-key"
-*      security_groups       = "sg-*****,sg-*****"
-*      subnet_id             = "pub-1"
-*      name                  = "quoin-bastion"
-*    }
 *
+* ```hcl
+* module "bastion" {
+*   source                = "github.com/concur/quoins//bastion"
+*   bastion_ami_id        = "ami-*****"
+*   bastion_instance_type = "t2.micro"
+*   bastion_key_name      = "ssh-key"
+*   security_groups       = "sg-*****,sg-*****"
+*   subnet_id             = "pub-1"
+*   cost_center           = "1000"
+*   role_type             = "abcd"
+*   name                  = "quoin-bastion"
+* }
+* ```
 */
 
 /*
@@ -56,7 +57,6 @@ variable "subnet_id" {
 
 variable "name" {
   description = "A name to prefix the bastion tag."
-  default     = "quoin"
 }
 
 variable "role_type" {

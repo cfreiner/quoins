@@ -1,4 +1,4 @@
-/*
+/**
 * This module creates a network layout with the following resources
 * inside a network:
 *
@@ -7,19 +7,22 @@
 * 3. An nat gateway to route traffic from the internal subnets to the internet.
 *
 * Usage:
-*   module "network_layout" {
-*     source              = "github.com/concur/quoins//external-internal-layout"
-*     vpc_id              = "vpc-*****"
-*     internet_gateway_id = "igw-*****"
-*     availability_zones  = "us-west-2a,us-west-2b,us-west-2c"
-*     external_subnets    = "172.16.0.0/24,172.16.1.0/24,172.16.2.0/24"
-*     internal_subnets    = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
-*     name                = "prod-us-network-layout"
-*   }
 *
-*   provider "aws" {
-*     region = "us-west-2"
-*   }
+* ```hcl
+* module "network_layout" {
+*   source              = "github.com/concur/quoins//external-internal-layout"
+*   vpc_id              = "vpc-*****"
+*   internet_gateway_id = "igw-*****"
+*   availability_zones  = "us-west-2a,us-west-2b,us-west-2c"
+*   external_subnets    = "172.16.0.0/24,172.16.1.0/24,172.16.2.0/24"
+*   internal_subnets    = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
+*   name                = "prod-us-network-layout"
+* }
+*
+* provider "aws" {
+*   region = "us-west-2"
+* }
+* ```
 *
 */
 

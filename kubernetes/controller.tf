@@ -113,7 +113,7 @@ resource "aws_launch_configuration" "controller" {
 }
 
 resource "aws_elb" "kubernetes_api" {
-  name                = "${format("%s-kubernetes", var.name)}"
+  name                = "${format("%s-k8s", var.name)}"
   connection_draining = true
   security_groups     = ["${aws_security_group.balancers.id}"]
   subnets             = ["${aws_subnet.external.*.id}"]

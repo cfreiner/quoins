@@ -67,7 +67,7 @@ resource "aws_subnet" "external" {
   vpc_id                  = "${var.vpc_id}"
   cidr_block              = "${element(split(",", var.external_subnets), count.index)}"
   availability_zone       = "${element(split(",", var.availability_zones), count.index)}"
-  count                   = "${length(compact(split(",", var.availability_zones)))}"
+  count                   = "${length(compact(split(",", var.external_subnets)))}"
   map_public_ip_on_launch = true
 
   tags {
@@ -79,7 +79,7 @@ resource "aws_subnet" "internal" {
   vpc_id            = "${var.vpc_id}"
   cidr_block        = "${element(split(",", var.internal_subnets), count.index)}"
   availability_zone = "${element(split(",", var.availability_zones), count.index)}"
-  count             = "${length(compact(split(",", var.availability_zones)))}"
+  count             = "${length(compact(split(",", var.internal_subnets)))}"
 
   tags {
     Name = "${var.name}-${format("internal-%03d", count.index+1)}"

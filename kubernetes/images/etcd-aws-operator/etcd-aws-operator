@@ -91,6 +91,7 @@ get_members() {
       *$instance_hostname*) continue;;
     esac
 
+    # TODO(weitengh): Find out etcd3 endpoint for list of members ($url/v2/members)
     local _etcd_members_response="$(run curl -f -s --cacert $ca_cert --cert $etcd_client_cert --key $etcd_client_key $url/v2/members)"
     if [ "$_etcd_members_response" ]; then
       _etcd_members="$_etcd_members_response"
@@ -154,7 +155,7 @@ join_existing_cluster() {
   local _etcd_member_url="$(get_member_url $_etcd_members)"
   assert_nz "$_etcd_member_url" "Unable to find a member url: $_etcd_members"
   say "Using member url: $_etcd_member_url"
-  
+
   # Before joining, remove any bad members from the cluster
   remove_bad_members $_etcd_members
 

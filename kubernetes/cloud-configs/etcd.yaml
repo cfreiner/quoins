@@ -50,7 +50,7 @@ coreos:
         ExecStart=/opt/bin/etcd-init.sh
 
         [Install]
-        WantedBy=etd2.service
+        WantedBy=etcd2.service
     - name: prepare-tls-assets.service
       command: start
       content: |

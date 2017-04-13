@@ -1,0 +1,209 @@
+#cloud-config
+---
+coreos:
+  update:
+    reboot-strategy: "off"
+  units:
+    - name: update-engine.service
+      enable: false
+      command: stop
+    - name: vault.service
+      command: start
+      content: |
+        [Unit]
+        Description=Pulls and runs vault
+        After=vault-init.service
+        
+        [Service]
+        Restart=on-failure
+        ExecStartPre=-/bin/docker kill vault
+        ExecStartPre=-/bin/docker rm vault
+        ExecStartPre=/bin/docker create --cap-add=IPC_LOCK --name vault -p 8200:8200 -p 8201:8201 -v /etc/vault/tls:/opt/etc/tls -v /opt/vault:/opt/etc/vault quay.io/concur_platform/vault:0.6.4-5b34ba3 /opt/bin/vault server -config=/opt/etc/vault/environment.config -log-level=info
+        ExecStart=/bin/docker start -a vault
+        ExecStop=/bin/docker stop -t 2 vault
+    - name: vault-init.service
+      command: start
+      content: |
+        [Unit]
+        Description=vault init
+        Requires=prepare-tls-assets.service docker.service
+        After=prepare-tls-assets.service docker.service
+        Before=vault.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        EnvironmentFile=/etc/environment
+        ExecStart=/opt/bin/vault-init.sh
+
+        [Install]
+        WantedBy=vault.service
+    - name: prepare-tls-assets.service
+      command: start
+      content: |
+        [Unit]
+        Description=Prepare vault TLS assets
+        Before=vault.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/opt/bin/prepare-tls-assets.sh
+
+        [Install]
+        RequiredBy=vault.service
+    - name: docker-gc.service
+      content: |
+        [Unit]
+        Description=Cleanup docker images and volumes
+        Requires=docker.service
+        ConditionPathExists=/opt/bin/docker-gc.sh
+
+        [Service]
+        Type=simple
+        ExecStart=/opt/bin/docker-gc.sh
+    - name: docker-gc.timer
+      command: start
+      content: |
+        [Unit]
+        Description=Run docker-gc daily
+
+        [Timer]
+        OnCalendar=daily
+        Unit=docker-gc.service
+    - name: docker-logrotate.service
+      content: |
+        [Unit]
+        Description=Rotate docker container logs
+        Requires=docker.service
+        ConditionPathExists=/etc/logrotate.d/docker-containers.conf
+
+        [Service]
+        Type=simple
+        ExecStart=/usr/sbin/logrotate -f -v /etc/logrotate.d/docker-containers.conf
+    - name: docker-logrotate.timer
+      command: start
+      content: |
+        [Unit]
+        Description=Rotate docker logs hourly
+
+        [Timer]
+        OnCalendar=hourly
+        Unit=docker-logrotate.service
+    - name: docker.service
+      command: start
+      drop-ins:
+        - name: 10-docker-mount.conf
+          content: |
+            [Unit]
+            After=var-lib-docker.mount
+            Wants=var-lib-docker.mount
+    - name: var-lib-docker.mount
+      command: start
+      content: |
+        [Unit]
+        Description=Mount disk to /var/lib/docker
+        Requires=format-docker-volume.service
+        After=format-docker-volume.service
+        Before=docker.service
+
+        [Mount]
+        What=/dev/xvdf
+        Where=/var/lib/docker
+        Type=ext4
+
+        [Install]
+        RequiredBy=docker.service
+    - name: format-docker-volume.service
+      command: start
+      content: |
+        [Unit]
+        Description=Formats docker EBS volume
+        After=dev-xvdf.device
+        Requires=dev-xvdf.device
+        Before=var-lib-docker.mount
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        Environment="LABEL=var-lib-docker"
+        Environment="DEV=/dev/xvdf"
+        # Do not wipe the disk if it's already being used, so the docker images are persisted across reboots.
+        ExecStart=-/bin/bash -c "if ! findfs LABEL=$LABEL > /tmp/label.$LABEL; then wipefs -a -f $DEV && mkfs.ext4 -T news -F -L $LABEL $DEV && echo wiped; fi"
+
+        [Install]
+        RequiredBy=var-lib-docker.mount
+write_files:
+  - path: /etc/environment
+    permissions: 0644
+    content: |
+      COREOS_PUBLIC_IPV4=$public_ipv4
+      COREOS_PRIVATE_IPV4=$private_ipv4
+  - path: /opt/bin/prepare-tls-assets.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      mkdir -p /etc/vault/tls
+      mv /root/cloudinit/tls/*.pem /etc/vault/tls
+  - path: /opt/bin/docker-gc.sh
+    permissions: 0700
+    owner: root
+    content: |
+      #!/usr/bin/bash
+
+      /usr/bin/docker rm -v $(docker ps -a -q -f status=exited)
+      /usr/bin/docker rmi $(docker images -q -f dangling=true)
+      /usr/bin/docker volume rm $(docker volume ls -q -f dangling=true)
+  - path: /etc/logrotate.d/docker-containers.conf
+    permissions: 0644
+    owner: root
+    content: |
+      /var/lib/docker/containers/*/*.log {
+        rotate 5
+        copytruncate
+        missingok
+        notifempty
+        compress
+        maxsize 10M
+        daily
+        create 0644 root root
+      }
+  - path: /opt/bin/vault-write-config.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      echo "Retrieving etcd instances"
+      shopt -s nullglob
+      region="$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document/ | jq -r '.region')"
+      etcd_instance_ids="$(aws autoscaling describe-auto-scaling-groups --region $region --auto-scaling-group-name ${etcd_cluster_quoin_name} | jq -r '.AutoScalingGroups[0].Instances[] | select(.LifecycleState  == "InService") | .InstanceId' | xargs)"
+      etcd_initial_cluster="$(aws ec2 describe-instances --region $region --instance-ids $etcd_instance_ids | jq -r '.Reservations[].Instances | map("https://" + .PrivateDnsName + ":2379")[]' | xargs | sed 's/  */,/g')"
+      cat <<END > /opt/vault/environment.config
+      backend "etcd" {
+          address  = "$etcd_initial_cluster"
+          redirect_addr = "https://$HOST_HOSTNAME:8200"
+          etcd_api = "v3"
+          ha_enabled = "true"
+          tls_ca_file = "/opt/etc/tls/ca-chain.pem"
+          tls_cert_file = "/opt/etc/tls/etcd-client.pem"
+          tls_key_file = "/opt/etc/tls/etcd-client-key.pem"
+      }
+
+      listener "tcp" {
+          address = "0.0.0.0:8200"
+          tls_cert_file = "/opt/etc/tls/vault-server.pem"
+          tls_key_file  = "/opt/etc/tls/vault-server-key.pem"
+      }
+      END
+      echo "Done."
+  - path: /opt/bin/vault-init.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      mkdir -p /opt/vault
+      /bin/docker run --rm -v /opt/vault:/opt/vault -v /opt/bin:/opt/bin -e HOST_HOSTNAME=$HOSTNAME quay.io/concur_platform/awscli:0.1.1 /opt/bin/vault-write-config.sh

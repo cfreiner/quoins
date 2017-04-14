@@ -114,6 +114,7 @@ write_files:
     content: |
       COREOS_PUBLIC_IPV4=$public_ipv4
       COREOS_PRIVATE_IPV4=$private_ipv4
+      ETCDCTL_API=3
       ETCDCTL_CA_FILE=/etc/etcd/tls/ca-chain.pem
       ETCDCTL_CERT_FILE=/etc/etcd/tls/etcd-client.pem
       ETCDCTL_KEY_FILE=/etc/etcd/tls/etcd-client-key.pem

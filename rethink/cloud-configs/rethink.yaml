@@ -1,0 +1,266 @@
+#cloud-config
+---
+coreos:
+  update:
+    reboot-strategy: "off"
+  units:
+    - name: update-engine.service
+      enable: false
+      command: stop
+    - name: rethink.service
+      command: start
+      content: |
+        [Unit]
+        Description=Pulls and runs rethink
+        Wants=opt-data.mount var-lib-docker.mount rethink-init.service docker.service
+        After=opt-data.mount var-lib-docker.mount rethink-init.service docker.service
+
+        [Service]
+        Restart=on-failure
+        ExecStartPre=-/bin/docker kill rethink
+        ExecStartPre=-/bin/docker rm rethink
+        ExecStartPre=/bin/docker create --name rethink \
+          -p 29015:29015 \
+          -p 28015:28015 \
+          -v /opt/config:/opt/config \
+          -v /opt/data:/data \
+          -v /etc/rethink/tls:/opt/rethink/tls \
+          rethinkdb:2.3.5 rethinkdb --config-file "/opt/config/rethink.conf"
+        ExecStart=/bin/docker start -a rethink
+        ExecStop=/bin/docker stop -t 2 rethink
+    - name: rethink-init.service
+      command: start
+      content: |
+        [Unit]
+        Description=rethink init
+        Requires=prepare-tls-assets.service docker.service
+        After=prepare-tls-assets.service docker.service
+        Before=rethink.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        EnvironmentFile=/etc/environment
+        ExecStart=/opt/bin/rethink-init.sh
+
+        [Install]
+        WantedBy=rethink.service
+    - name: prepare-tls-assets.service
+      command: start
+      content: |
+        [Unit]
+        Description=Prepare rethink TLS assets
+        Before=rethink-init.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/opt/bin/prepare-tls-assets.sh
+
+        [Install]
+        RequiredBy=rethink-init.service
+    - name: docker-gc.service
+      content: |
+        [Unit]
+        Description=Cleanup docker images and volumes
+        Requires=docker.service
+        ConditionPathExists=/opt/bin/docker-gc.sh
+        [Service]
+        Type=simple
+        ExecStart=/opt/bin/docker-gc.sh
+    - name: docker-gc.timer
+      command: start
+      content: |
+        [Unit]
+        Description=Run docker-gc daily
+        [Timer]
+        OnCalendar=daily
+        Unit=docker-gc.service
+    - name: docker-logrotate.service
+      content: |
+        [Unit]
+        Description=Rotate docker container logs
+        Requires=docker.service
+        ConditionPathExists=/etc/logrotate.d/docker-containers.conf
+        [Service]
+        Type=simple
+        ExecStart=/usr/sbin/logrotate -f -v /etc/logrotate.d/docker-containers.conf
+    - name: docker-logrotate.timer
+      command: start
+      content: |
+        [Unit]
+        Description=Rotate docker logs hourly
+        [Timer]
+        OnCalendar=hourly
+        Unit=docker-logrotate.service
+    - name: docker.service
+      command: start
+      drop-ins:
+        - name: 10-docker-mount.conf
+          content: |
+            [Unit]
+            After=var-lib-docker.mount
+            Wants=var-lib-docker.mount
+        - name: 20-opt-data-mount.conf
+          content: |
+            [Unit]
+            After=opt-data.mount
+            Wants=opt-data.mount
+    - name: opt-data.mount
+      command: start
+      content: |
+        [Unit]
+        Description=Mount disk to /opt/data
+        Requires=format-data-volume.service
+        After=format-data-volume.service
+        Before=docker.service
+
+        [Mount]
+        What=/dev/xvdg
+        Where=/opt/data
+        Type=ext4
+
+        [Install]
+        RequiredBy=docker.service
+    - name: format-data-volume.service
+      command: start
+      content: |
+        [Unit]
+        Description=Formats data EBS volume
+        After=dev-xvdg.device
+        Requires=dev-xvdg.device
+        Before=opt-data.mount
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        Environment="LABEL=opt-data"
+        Environment="DEV=/dev/xvdg"
+        # Do not wipe the disk if it's already being used, so the docker images are persisted across reboots.
+        ExecStart=-/bin/bash -c "if ! findfs LABEL=$LABEL > /tmp/label.$LABEL; then wipefs -a -f $DEV && mkfs.ext4 -T news -F -L $LABEL $DEV && echo wiped; fi"
+
+        [Install]
+        RequiredBy=opt-data.mount
+    - name: var-lib-docker.mount
+      command: start
+      content: |
+        [Unit]
+        Description=Mount disk to /var/lib/docker
+        Requires=format-docker-volume.service
+        After=format-docker-volume.service
+        Before=docker.service
+
+        [Mount]
+        What=/dev/xvdf
+        Where=/var/lib/docker
+        Type=ext4
+
+        [Install]
+        RequiredBy=docker.service
+    - name: format-docker-volume.service
+      command: start
+      content: |
+        [Unit]
+        Description=Formats docker EBS volume
+        After=dev-xvdf.device
+        Requires=dev-xvdf.device
+        Before=var-lib-docker.mount
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        Environment="LABEL=var-lib-docker"
+        Environment="DEV=/dev/xvdf"
+        # Do not wipe the disk if it's already being used, so the docker images are persisted across reboots.
+        ExecStart=-/bin/bash -c "if ! findfs LABEL=$LABEL > /tmp/label.$LABEL; then wipefs -a -f $DEV && mkfs.ext4 -T news -F -L $LABEL $DEV && echo wiped; fi"
+
+        [Install]
+        RequiredBy=var-lib-docker.mount
+write_files:
+  - path: /etc/environment
+    permissions: 0644
+    content: |
+      COREOS_PUBLIC_IPV4=$public_ipv4
+      COREOS_PRIVATE_IPV4=$private_ipv4
+  - path: /opt/bin/prepare-tls-assets.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      mkdir -p /etc/rethink/tls
+      mv /root/cloudinit/tls/*.pem /etc/rethink/tls
+  - path: /opt/bin/docker-gc.sh
+    permissions: 0700
+    owner: root
+    content: |
+      #!/usr/bin/bash
+      /usr/bin/docker rm -v $(docker ps -a -q -f status=exited)
+      /usr/bin/docker rmi $(docker images -q -f dangling=true)
+      /usr/bin/docker volume rm $(docker volume ls -q -f dangling=true)
+  - path: /etc/logrotate.d/docker-containers.conf
+    permissions: 0644
+    owner: root
+    content: |
+      /var/lib/docker/containers/*/*.log {
+        rotate 5
+        copytruncate
+        missingok
+        notifempty
+        compress
+        maxsize 10M
+        daily
+        create 0644 root root
+      }
+  - path: /opt/bin/rethink-cluster-config.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      # Secure and Join Rethink Cluster
+      rethink_conf="/opt/config/rethink.conf"
+      if [[ ! -f $rethink_conf ]]; then
+        touch $rethink_conf
+
+        # Node Settings
+        echo "canonical-address=$HOST_HOSTNAME" > $rethink_conf
+        echo "no-http-admin" >> $rethink_conf
+        echo "bind-cluster=all" >> $rethink_conf
+        echo "bind-driver=all" >> $rethink_conf
+
+        # TLS Settings
+        echo "tls-ciphers=EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH:AES256-SHA" >> $rethink_conf
+        echo "cluster-tls-key=/opt/rethink/tls/rethink-cluster-key.pem" >> $rethink_conf
+        echo "cluster-tls-cert=/opt/rethink/tls/rethink-cluster.pem" >> $rethink_conf
+        echo "cluster-tls-ca=/opt/rethink/tls/ca-chain.pem" >> $rethink_conf
+        echo "driver-tls-key=/opt/rethink/tls/rethink-driver-key.pem" >> $rethink_conf
+        echo "driver-tls-cert=/opt/rethink/tls/rethink-driver.pem" >> $rethink_conf
+
+        # Cluster Settings
+        region="$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq --raw-output '.region')"
+        instance_id="$(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+        asg_name="$(aws autoscaling describe-auto-scaling-groups --region $region | jq --raw-output '.[] | map(select(.Instances[].InstanceId == "'$instance_id'")) | .[].AutoScalingGroupName')"
+        rethink_instance_ids="$(aws autoscaling describe-auto-scaling-groups --region $region --auto-scaling-group-name $asg_name | jq -r '.AutoScalingGroups[0].Instances[] | select(.LifecycleState  == "InService") | .InstanceId' | xargs)"
+        rethink_peer_urls="$(aws ec2 describe-instances --region $region --instance-ids $rethink_instance_ids | jq -r '.Reservations[].Instances | map(.PrivateDnsName + ":29015")[]')"
+
+        for i in $rethink_peer_urls; do
+          if [ "$i" != "$HOST_HOSTNAME:29015" ]; then
+            echo "join=$i" >> $rethink_conf
+          fi
+        done
+      fi
+  - path: /opt/bin/rethink-init.sh
+    permissions: 0700
+    owner: root:root
+    content: |
+      #!/bin/bash
+
+      work_dir="/opt/config"
+      if [[ ! -d "$work_dir" ]]; then
+        mkdir -p $work_dir
+      fi
+      /bin/docker run --rm -e HOST_HOSTNAME=$HOSTNAME \
+        -v /opt/config:/opt/config \
+        -v /opt/bin:/opt/bin \
+        quay.io/concur_platform/awscli:0.1.1 /opt/bin/rethink-cluster-config.sh

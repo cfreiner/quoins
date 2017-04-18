@@ -188,8 +188,8 @@ write_files:
           etcd_api = "v3"
           ha_enabled = "true"
           tls_ca_file = "/opt/etc/tls/ca-chain.pem"
-          tls_cert_file = "/opt/etc/tls/etcd-client.pem"
-          tls_key_file = "/opt/etc/tls/etcd-client-key.pem"
+          tls_cert_file = "/opt/etc/tls/vault-etcd-client.pem"
+          tls_key_file = "/opt/etc/tls/vault-etcd-client-key.pem"
       }
 
       listener "tcp" {

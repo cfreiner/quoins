@@ -8,6 +8,18 @@ variable "subnet_ids" {
   description = "A comma-separated list of subnet ids to use for the instances."
 }
 
+variable "vault_elb_cert" {
+  description = "The public certificate to be used by the ELB that fronts vault instances encoded in PEM format."
+}
+
+variable "vault_elb_key" {
+  description = "The private key to be used by the ELB that fronts vault instances encode in PEM format."
+}
+
+variable "vault_server_cert_plain" {
+  description = "The public certificate to be used by vault servers encoded in PEM format."
+}
+
 variable "vault_server_cert" {
   description = "The public certificate to be used by vault servers encoded in base64 format."
 }
@@ -78,6 +90,7 @@ resource "aws_autoscaling_group" "vault" {
   vpc_zone_identifier  = ["${split(",", var.subnet_ids)}"]
   health_check_type    = "EC2"
   force_delete         = true
+  load_balancers       = ["${aws_elb.vault.id}"]
   launch_configuration = "${aws_launch_configuration.vault.name}"
 
   tag {
@@ -168,6 +181,95 @@ resource "aws_security_group" "vault" {
   }
 }
 
+# Load Balancer
+resource "aws_elb" "vault" {
+  name                = "${format("%s", var.name)}"
+  connection_draining = true
+  internal            = true
+  security_groups     = ["${aws_security_group.balancers.id}"]
+  subnets             = ["${split(",", var.subnet_ids)}"]
+
+  listener {
+    instance_port     = 8200
+    instance_protocol = "https"
+    lb_port           = 443
+    lb_protocol       = "https"
+    ssl_certificate_id = "${aws_iam_server_certificate.vault_elb_certificate.arn}"
+  }
+
+  health_check {
+    healthy_threshold   = 2
+    interval            = 30
+    target              = "https:8200/v1/sys/health"
+    timeout             = 3
+    unhealthy_threshold = 2
+  }
+
+  tags {
+    Name = "${format("%s-elb", var.name)}"
+  }
+}
+
+resource "aws_security_group" "balancers" {
+  name   = "${format("%s-balancers-%s", var.name, element(split("-", var.vpc_id), 1))}"
+  vpc_id = "${var.vpc_id}"
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["${var.vpc_cidr}"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags {
+    Name = "${format("%s-balancers", var.name)}"
+  }
+}
+
+resource "aws_load_balancer_policy" "vault_public_key_policy" {
+  load_balancer_name = "${aws_elb.vault.name}"
+  policy_name        = "${format("%s-public-key-policy", var.name)}"
+  policy_type_name   = "PublicKeyPolicyType"
+
+  policy_attribute = {
+    name  = "PublicKey"
+    value = "${var.vault_server_cert_plain}"
+  }
+}
+
+resource "aws_load_balancer_policy" "vault_backend_auth_policy" {
+  load_balancer_name = "${aws_elb.vault.name}"
+  policy_name        = "${format("%s-backend-auth-policy", var.name)}"
+  policy_type_name   = "BackendServerAuthenticationPolicyType"
+
+  policy_attribute = {
+    name  = "PublicKeyPolicyName"
+    value = "${aws_load_balancer_policy.vault_public_key_policy.policy_name}"
+  }
+}
+
+resource "aws_load_balancer_backend_server_policy" "vault_auth_policies_443" {
+  load_balancer_name = "${aws_elb.vault.name}"
+  instance_port      = 443
+
+  policy_names = [
+    "${aws_load_balancer_policy.vault_backend_auth_policy.policy_name}",
+  ]
+}
+
+resource "aws_iam_server_certificate" "vault_elb_certificate" {
+  name             = "${format("%s-elb-cert", var.name)}"
+  certificate_body = "${var.vault_elb_cert}"
+  private_key      = "${var.vault_elb_key}"
+}
+
 # Vault cloud-config
 resource "aws_s3_bucket_object" "vault" {
   bucket  = "${aws_s3_bucket.cluster.bucket}"
@@ -190,13 +292,13 @@ resource "aws_s3_bucket_object" "vault_server_key" {
 
 resource "aws_s3_bucket_object" "vault_etcd_client_cert" {
   bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/etcd-client.pem.enc.base"
+  key     = "cloudinit/common/tls/vault-etcd-client.pem.enc.base"
   content = "${var.vault_etcd_client_cert}"
 }
 
 resource "aws_s3_bucket_object" "vault_etcd_client_key" {
   bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/etcd-client-key.pem.enc.base"
+  key     = "cloudinit/common/tls/vault-etcd-client-key.pem.enc.base"
   content = "${var.vault_etcd_client_key}"
 }
 
@@ -249,3 +351,8 @@ data "template_file" "vault" {
 * Outputs
 * ------------------------------------------------------------------------------
 */
+
+# The ELB DNS in which you can access the vault internally.
+output "vault_dns" {
+  value = "${aws_elb.vault.dns_name}"
+}

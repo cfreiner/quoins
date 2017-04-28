@@ -2,20 +2,10 @@
 coreos:
   update:
     reboot-strategy: "off"
-  etcd2:
-    proxy: "on"
-    listen-client-urls: "http://127.0.0.1:2379,http://127.0.0.1:4001"
-    peer-trusted-ca-file: "/etc/kubernetes/tls/ca-chain.pem"
-    peer-cert-file: "/etc/kubernetes/tls/etcd-client.pem"
-    peer-key-file: "/etc/kubernetes/tls/etcd-client-key.pem"
-    trusted-ca-file: "/etc/kubernetes/tls/ca-chain.pem"
-    cert-file: "/etc/kubernetes/tls/etcd-client.pem"
-    key-file: "/etc/kubernetes/tls/etcd-client-key.pem"
-  flannel:
-    interface: "$private_ipv4"
   units:
     - name: install-kube-system.service
       command: start
+      enable: true
       runtime: true
       content: |
         [Unit]
@@ -32,19 +22,38 @@ coreos:
         ExecStart=/opt/bin/install-kube-system.sh
     - name: kubelet.service
       command: start
+      enable: true
       content: |
         [Unit]
         Wants=flanneld.service
 
         [Service]
         ExecStartPre=/usr/bin/systemctl is-active flanneld.service
-        ExecStart=/opt/bin/kubelet-wrapper.sh
+        Environment=KUBELET_IMAGE_TAG=${kubernetes_version}
+        Environment="RKT_RUN_ARGS=--uuid-file-save=/var/run/kubelet-pod.uuid \
+          --volume var-log,kind=host,source=/var/log \
+          --mount volume=var-log,target=/var/log \
+          --volume dns,kind=host,source=/etc/resolv.conf \
+          --mount volume=dns,target=/etc/resolv.conf"
+        ExecStartPre=/usr/bin/mkdir -p /var/log/containers
+        ExecStartPre=-/usr/bin/rkt rm --uuid-file=/var/run/kubelet-pod.uuid
+        ExecStart=/usr/lib/coreos/kubelet-wrapper \
+          --api-servers=http://127.0.0.1:8080 \
+          --register-schedulable=false \
+          --cni-conf-dir=/etc/kubernetes/cni/net.d \
+          --container-runtime=docker \
+          --allow-privileged=true \
+          --pod-manifest-path=/etc/kubernetes/manifests \
+          --cluster_dns=${kubernetes_dns_service_ip} \
+          --cluster_domain=cluster.local
+        ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
         Restart=always
         RestartSec=10
 
         [Install]
         WantedBy=multi-user.target
     - name: docker-gc.service
+      enable: true
       content: |
         [Unit]
         Description=Cleanup docker images and volumes
@@ -56,6 +65,7 @@ coreos:
         ExecStart=/opt/bin/docker-gc.sh
     - name: docker-gc.timer
       command: start
+      enable: true
       content: |
         [Unit]
         Description=Run docker-gc daily
@@ -64,6 +74,7 @@ coreos:
         OnCalendar=daily
         Unit=docker-gc.service
     - name: docker-logrotate.service
+      enable: true
       content: |
         [Unit]
         Description=Rotate docker container logs
@@ -75,6 +86,7 @@ coreos:
         ExecStart=/usr/sbin/logrotate -f -v /etc/logrotate.d/docker-containers.conf
     - name: docker-logrotate.timer
       command: start
+      enable: true
       content: |
         [Unit]
         Description=Rotate docker logs hourly
@@ -84,6 +96,7 @@ coreos:
         Unit=docker-logrotate.service
     - name: docker.service
       command: start
+      enable: true
       drop-ins:
         - name: 10-docker-mount.conf
           content: |
@@ -93,12 +106,15 @@ coreos:
         - name: 40-flannel.conf
           content: |
             [Unit]
-            Wants=flanneld.service
+            Requires=flanneld.service
+            After=flanneld.service
 
             [Service]
+            EnvironmentFile=/etc/kubernetes/cni/docker_opts_cni.env
             ExecStartPre=/usr/bin/systemctl is-active flanneld.service
     - name: var-lib-docker.mount
       command: start
+      enable: true
       content: |
         [Unit]
         Description=Mount disk to /var/lib/docker
@@ -115,6 +131,7 @@ coreos:
         RequiredBy=docker.service
     - name: format-docker-volume.service
       command: start
+      enable: true
       content: |
         [Unit]
         Description=Formats docker EBS volume
@@ -133,34 +150,50 @@ coreos:
         [Install]
         RequiredBy=var-lib-docker.mount
     - name: flanneld.service
+      command: start
+      enable: true
       drop-ins:
         - name: 10-etcd.conf
           content: |
             [Unit]
-            Wants=etcd2.service
-            After=etcd2.service
+            Wants=etcd-cluster-health.service
+            After=etcd-cluster-health.service
 
             [Service]
-            ExecStartPre=/usr/bin/curl --silent -X PUT -d \
-            "value={\"Network\" : \"${kubernetes_pod_cidr}\", \"Backend\" : {\"Type\" : \"vxlan\"}}" \
-            http://localhost:2379/v2/keys/coreos.com/network/config?prevExist=false
-    - name: etcd2.service
-      command: start
-      drop-ins:
-        - name: 60-initial-cluster.conf
+            EnvironmentFile=/etc/environment
+            ExecStartPre=/bin/etcdctl --endpoints=$etcd_endpoint_urls set "coreos.com/network/config" "{\"Network\" : \"${kubernetes_pod_cidr}\", \"Backend\" : {\"Type\" : \"vxlan\"}}"
+        - name: 40-ExecStartPre-symlink.conf
           content: |
             [Unit]
-            Requires=prepare-tls-assets.service
-            After=prepare-tls-assets.service
+            Wants=etcd-cluster-health.service
+            After=etcd-cluster-health.service
 
             [Service]
-            EnvironmentFile=/var/run/coreos/initial-cluster
-    - name: prepare-tls-assets.service
+            ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
+    - name: etcd-cluster-health.service
       command: start
+      enable: true
       content: |
         [Unit]
-        Description=Prepare etcd2 TLS assets
-        Before=etcd2.service
+        Before=flanneld.service
+
+        [Service]
+        Type=simple
+        StartLimitInterval=0
+        RestartSec=10
+        Restart=on-failure
+        EnvironmentFile=/etc/environment
+        ExecStart=/bin/etcdctl --endpoints=$etcd_endpoint_urls cluster-health
+
+        [Install]
+        RequiredBy=flanneld.service
+    - name: prepare-tls-assets.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Prepare etcd TLS assets
+        Before=etcd-cluster-health.service
 
         [Service]
         Type=oneshot
@@ -168,19 +201,50 @@ coreos:
         ExecStart=/opt/bin/prepare-tls-assets.sh
 
         [Install]
-        RequiredBy=etcd2.service
+        RequiredBy=etcd-cluster-health.service
     - name: update-engine.service
       command: stop
       enable: false
     - name: locksmithd.service
       command: stop
       enable: false
+    - name: etcd2.service
+      enable: false
+      command: stop
 write_files:
   - path: /etc/environment
     permissions: 0644
     content: |
       COREOS_PUBLIC_IPV4=$public_ipv4
       COREOS_PRIVATE_IPV4=$private_ipv4
+      ETCDCTL_API=3
+      ETCDCTL_CA_FILE=/etc/kubernetes/tls/ca-chain.pem
+      ETCDCTL_CERT_FILE=/etc/kubernetes/tls/etcd-client.pem
+      ETCDCTL_KEY_FILE=/etc/kubernetes/tls/etcd-client-key.pem
+  - path: /etc/flannel/options.env
+    permissions: 0644
+    content: |
+      ETCD_SSL_DIR=/etc/kubernetes/tls
+      FLANNELD_IFACE=$private_ipv4
+      FLANNELD_ETCD_ENDPOINTS=$etcd_endpoint_urls
+      FLANNELD_ETCD_CAFILE=/etc/kubernetes/tls/ca-chain.pem
+      FLANNELD_ETCD_CERTFILE=/etc/kubernetes/tls/etcd-client.pem
+      FLANNELD_ETCD_KEYFILE=/etc/kubernetes/tls/etcd-client-key.pem
+  - path: /etc/kubernetes/cni/docker_opts_cni.env
+    permissions: 0644
+    content: |
+      DOCKER_OPT_BIP=""
+      DOCKER_OPT_IPMASQ=""
+  - path: /etc/kubernetes/cni/net.d/10-flannel.conf
+    permissions: 0644
+    content: |
+      {
+          "name": "podnet",
+          "type": "flannel",
+          "delegate": {
+              "isDefaultGateway": true
+          }
+      }
   - path: /opt/bin/prepare-tls-assets.sh
     permissions: 0700
     owner: root:root
@@ -212,30 +276,6 @@ write_files:
         daily
         create 0644 root root
       }
-  - path: /opt/bin/kubelet-wrapper.sh
-    permissions: 0700
-    owner: root:root
-    content: |
-      #!/usr/bin/bash
-
-      set -e
-
-      if [ ! -f /opt/bin/kubelet ]; then
-        mkdir -p /opt/bin
-        curl -L -o /opt/bin/kubelet https://s3-us-west-2.amazonaws.com/concur-native-binarys/kubernetes/${kubernetes_version}/kubelet
-        chmod 700 /opt/bin/kubelet
-      fi
-
-      /opt/bin/kubelet \
-        --api-servers=http://localhost:8080 \
-        --register-schedulable=false \
-        --allow-privileged=true \
-        --cadvisor-port=0 \
-        --config=/etc/kubernetes/manifests \
-        --cluster-dns=${kubernetes_dns_service_ip} \
-        --cluster-domain=cluster.local \
-        --logtostderr=true \
-        --v=2
   - path: /opt/bin/install-kube-system.sh
     permissions: 0700
     owner: root:root
@@ -246,21 +286,11 @@ write_files:
 
       # Kube System Namespace
       /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kube-system.json" "http://127.0.0.1:8080/api/v1/namespaces"
-      
+
       # Kube DNS Addon
       /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kube-dns-rc.json" \
         "http://127.0.0.1:8080/api/v1/namespaces/kube-system/replicationcontrollers"
       /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kube-dns-svc.json" \
-        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
-      
-      # Fluentd/ElasticSearch/Kibana Logging Addon
-      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/es-controller.json" \
-        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/replicationcontrollers"
-      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/es-service.json" \
-        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
-      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kibana-controller.json" \
-        "http://127.0.0.1:8080/api/v1/namespaces/kube-system/replicationcontrollers"
-      /usr/bin/curl -H "Content-Type: application/json" -XPOST -d @"/srv/kubernetes/manifests/kibana-service.json" \
         "http://127.0.0.1:8080/api/v1/namespaces/kube-system/services"
   - path: /etc/kubernetes/manifests/kube-proxy.yaml
     content: |
@@ -305,7 +335,7 @@ write_files:
           - /hyperkube
           - apiserver
           - --bind-address=0.0.0.0
-          - --etcd-servers=http://localhost:2379
+          - --etcd-servers=$etcd_endpoint_urls
           - --allow-privileged=true
           - --service-cluster-ip-range=${kubernetes_service_cidr}
           - --insecure-bind-address=0.0.0.0
@@ -316,8 +346,20 @@ write_files:
           - --tls-private-key-file=/etc/kubernetes/tls/api-server-key.pem
           - --client-ca-file=/etc/kubernetes/tls/ca-chain.pem
           - --service-account-key-file=/etc/kubernetes/tls/api-server-key.pem
-          - --runtime-config=extensions/v1beta1/deployments=true,extensions/v1beta1/daemonsets=true,extensions/v1beta1=true,extensions/v1beta1/thirdpartyresources=true
+          - --runtime-config=extensions/v1beta1/networkpolicies=true
+          - --anonymous-auth=false
+          - --storage-backend=etcd3
+          - --etcd-cafile=/etc/kubernetes/tls/ca-chain.pem
+          - --etcd-certfile=/etc/kubernetes/tls/etcd-client.pem
+          - --etcd-keyfile=/etc/kubernetes/tls/etcd-client-key.pem
           - --cloud-provider=aws
+          livenessProbe:
+            httpGet:
+              host: 127.0.0.1
+              port: 8080
+              path: /healthz
+            initialDelaySeconds: 15
+            timeoutSeconds: 15
           ports:
           - containerPort: 443
             hostPort: 443
@@ -347,6 +389,7 @@ write_files:
         name: kube-controller-manager
         namespace: kube-system
       spec:
+        hostNetwork: true
         containers:
         - name: kube-controller-manager
           image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
@@ -358,13 +401,16 @@ write_files:
           - --service-account-private-key-file=/etc/kubernetes/tls/api-server-key.pem
           - --root-ca-file=/etc/kubernetes/tls/ca-chain.pem
           - --cloud-provider=aws
+          resources:
+            requests:
+              cpu: 200m
           livenessProbe:
             httpGet:
               host: 127.0.0.1
               path: /healthz
               port: 10252
             initialDelaySeconds: 15
-            timeoutSeconds: 1
+            timeoutSeconds: 15
           volumeMounts:
           - mountPath: /etc/kubernetes/tls
             name: tls-certs-kubernetes
@@ -397,6 +443,9 @@ write_files:
           - scheduler
           - --master=http://127.0.0.1:8080
           - --leader-elect=true
+          resources:
+            requests:
+              cpu: 100m
           livenessProbe:
             httpGet:
               host: 127.0.0.1
@@ -419,107 +468,107 @@ write_files:
         "apiVersion": "v1",
         "kind": "ReplicationController",
         "metadata": {
+          "name": "kube-dns-v20",
+          "namespace": "kube-system",
           "labels": {
             "k8s-app": "kube-dns",
             "kubernetes.io/cluster-service": "true",
-            "version": "v11"
-          },
-          "name": "kube-dns-v11",
-          "namespace": "kube-system"
+            "version": "v20"
+          }
         },
         "spec": {
           "replicas": 1,
           "selector": {
             "k8s-app": "kube-dns",
-            "version": "v11"
+            "version": "v20"
           },
           "template": {
             "metadata": {
+              "annotations": {
+                "scheduler.alpha.kubernetes.io/critical-pod": "",
+                "scheduler.alpha.kubernetes.io/tolerations": "[{\"key\":\"CriticalAddonsOnly\", \"operator\":\"Exists\"}]"
+              },
               "labels": {
                 "k8s-app": "kube-dns",
-                "kubernetes.io/cluster-service": "true",
-                "version": "v11"
+                "version": "v20"
               }
             },
             "spec": {
               "containers": [
                 {
-                  "command": [
-                    "/usr/local/bin/etcd",
-                    "-data-dir",
-                    "/var/etcd/data",
-                    "-listen-client-urls",
-                    "http://127.0.0.1:2379,http://127.0.0.1:4001",
-                    "-advertise-client-urls",
-                    "http://127.0.0.1:2379,http://127.0.0.1:4001",
-                    "-initial-cluster-token",
-                    "skydns-etcd"
-                  ],
-                  "image": "gcr.io/google_containers/etcd-amd64:2.2.1",
-                  "name": "etcd",
+                  "name": "kubedns",
+                  "image": "gcr.io/google_containers/kubedns-amd64:1.8",
                   "resources": {
                     "limits": {
-                      "cpu": "100m",
-                      "memory": "500Mi"
+                      "memory": "170Mi"
                     },
                     "requests": {
                       "cpu": "100m",
-                      "memory": "50Mi"
+                      "memory": "70Mi"
                     }
                   },
-                  "volumeMounts": [
-                    {
-                      "mountPath": "/var/etcd/data",
-                      "name": "etcd-storage"
-                    }
-                  ]
-                },
-                {
-                  "args": [
-                    "--domain=cluster.local"
-                  ],
-                  "image": "gcr.io/google_containers/kube2sky:1.14",
                   "livenessProbe": {
                     "failureThreshold": 5,
                     "httpGet": {
-                      "path": "/healthz",
+                      "path": "/healthz-kubedns",
                       "port": 8080,
                       "scheme": "HTTP"
                     },
                     "initialDelaySeconds": 60,
+                    "periodSeconds": 10,
                     "successThreshold": 1,
                     "timeoutSeconds": 5
                   },
-                  "name": "kube2sky",
                   "readinessProbe": {
+                    "failureThreshold": 3,
                     "httpGet": {
                       "path": "/readiness",
                       "port": 8081,
                       "scheme": "HTTP"
                     },
-                    "initialDelaySeconds": 30,
+                    "initialDelaySeconds": 3,
+                    "periodSeconds": 10,
+                    "successThreshold": 1,
                     "timeoutSeconds": 5
                   },
-                  "resources": {
-                    "limits": {
-                      "cpu": "100m",
-                      "memory": "200Mi"
+                  "args": [
+                    "--domain=cluster.local.",
+                    "--dns-port=10053"
+                  ],
+                  "ports": [
+                    {
+                      "containerPort": 10053,
+                      "name": "dns-local",
+                      "protocol": "UDP"
                     },
-                    "requests": {
-                      "cpu": "100m",
-                      "memory": "50Mi"
+                    {
+                      "containerPort": 10053,
+                      "name": "dns-tcp-local",
+                      "protocol": "TCP"
                     }
-                  }
+                  ]
                 },
                 {
+                  "name": "dnsmasq",
+                  "image": "gcr.io/google_containers/kube-dnsmasq-amd64:1.4",
+                  "livenessProbe": {
+                    "failureThreshold": 5,
+                    "httpGet": {
+                      "path": "/healthz-dnsmasq",
+                      "port": 8080,
+                      "scheme": "HTTP"
+                    },
+                    "initialDelaySeconds": 60,
+                    "periodSeconds": 10,
+                    "successThreshold": 1,
+                    "timeoutSeconds": 5
+                  },
                   "args": [
-                    "-machines=http://127.0.0.1:4001",
-                    "-addr=0.0.0.0:53",
-                    "-ns-rotate=false",
-                    "-domain=cluster.local."
+                    "--cache-size=1000",
+                    "--no-resolv",
+                    "--server=127.0.0.1#10053",
+                    "--log-facility=-"
                   ],
-                  "image": "gcr.io/google_containers/skydns:2015-10-13-8c72f8c",
-                  "name": "skydns",
                   "ports": [
                     {
                       "containerPort": 53,
@@ -531,50 +580,37 @@ write_files:
                       "name": "dns-tcp",
                       "protocol": "TCP"
                     }
-                  ],
-                  "resources": {
-                    "limits": {
-                      "cpu": "100m",
-                      "memory": "200Mi"
-                    },
-                    "requests": {
-                      "cpu": "100m",
-                      "memory": "50Mi"
-                    }
-                  }
+                  ]
                 },
                 {
-                  "args": [
-                    "-cmd=nslookup kubernetes.default.svc.cluster.local 127.0.0.1 >/dev/null",
-                    "-port=8080"
-                  ],
-                  "image": "gcr.io/google_containers/exechealthz:1.0",
                   "name": "healthz",
+                  "image": "gcr.io/google_containers/exechealthz-amd64:1.2",
+                  "resources": {
+                    "limits": {
+                      "memory": "50Mi"
+                    },
+                    "requests": {
+                      "cpu": "10m",
+                      "memory": "50Mi"
+                    }
+                  },
+                  "args": [
+                    "--cmd=nslookup kubernetes.default.svc.cluster.local 127.0.0.1 >/dev/null",
+                    "--url=/healthz-dnsmasq",
+                    "--cmd=nslookup kubernetes.default.svc.cluster.local 127.0.0.1:10053 >/dev/null",
+                    "--url=/healthz-kubedns",
+                    "--port=8080",
+                    "--quiet"
+                  ],
                   "ports": [
                     {
                       "containerPort": 8080,
                       "protocol": "TCP"
                     }
-                  ],
-                  "resources": {
-                    "limits": {
-                      "cpu": "10m",
-                      "memory": "20Mi"
-                    },
-                    "requests": {
-                      "cpu": "10m",
-                      "memory": "20Mi"
-                    }
-                  }
+                  ]
                 }
               ],
-              "dnsPolicy": "Default",
-              "volumes": [
-                {
-                  "emptyDir": {},
-                  "name": "etcd-storage"
-                }
-              ]
+              "dnsPolicy": "Default"
             }
           }
         }
@@ -606,226 +642,6 @@ write_files:
           }],
           "selector": {
             "k8s-app": "kube-dns"
-          }
-        }
-      }
-  - path: /etc/kubernetes/manifests/fluentd-es.yaml
-    content: |
-      apiVersion: v1
-      kind: Pod
-      metadata:
-        name: fluentd-elasticsearch
-        namespace: kube-system
-        labels:
-          k8s-app: fluentd-logging
-      spec:
-        containers:
-        - name: fluentd-elasticsearch
-          image: gcr.io/google_containers/fluentd-elasticsearch:1.15
-          resources:
-            limits:
-              memory: 200Mi
-            requests:
-              cpu: 100m
-              memory: 200Mi
-          volumeMounts:
-          - name: varlog
-            mountPath: /var/log
-          - name: varlibdockercontainers
-            mountPath: /var/lib/docker/containers
-            readOnly: true
-        terminationGracePeriodSeconds: 30
-        volumes:
-        - name: varlog
-          hostPath:
-            path: /var/log
-        - name: varlibdockercontainers
-          hostPath:
-            path: /var/lib/docker/containers
-  - path: /srv/kubernetes/manifests/es-controller.json
-    content: |
-      {
-        "apiVersion": "v1",
-        "kind": "ReplicationController",
-        "metadata": {
-          "name": "elasticsearch-logging-v1",
-          "namespace": "kube-system",
-          "labels": {
-            "k8s-app": "elasticsearch-logging",
-            "version": "v1",
-            "kubernetes.io/cluster-service": "true"
-          }
-        },
-        "spec": {
-          "replicas": 2,
-          "selector": {
-            "k8s-app": "elasticsearch-logging",
-            "version": "v1"
-          },
-          "template": {
-            "metadata": {
-              "labels": {
-                "k8s-app": "elasticsearch-logging",
-                "version": "v1",
-                "kubernetes.io/cluster-service": "true"
-              }
-            },
-            "spec": {
-              "containers": [
-                {
-                  "image": "gcr.io/google_containers/elasticsearch:1.8",
-                  "name": "elasticsearch-logging",
-                  "resources": {
-                    "limits": {
-                      "cpu": "100m"
-                    },
-                    "requests": {
-                      "cpu": "100m"
-                    }
-                  },
-                  "ports": [
-                    {
-                      "containerPort": 9200,
-                      "name": "db",
-                      "protocol": "TCP"
-                    },
-                    {
-                      "containerPort": 9300,
-                      "name": "transport",
-                      "protocol": "TCP"
-                    }
-                  ],
-                  "volumeMounts": [
-                    {
-                      "name": "es-persistent-storage",
-                      "mountPath": "/data"
-                    }
-                  ]
-                }
-              ],
-              "volumes": [
-                {
-                  "name": "es-persistent-storage",
-                  "hostPath": {
-                    "path": "/opt/logging/es"
-                  }
-                }
-              ]
-            }
-          }
-        }
-      }
-  - path: /srv/kubernetes/manifests/es-service.json
-    content: |
-      {
-        "apiVersion": "v1",
-        "kind": "Service",
-        "metadata": {
-          "name": "elasticsearch-logging",
-          "namespace": "kube-system",
-          "labels": {
-            "k8s-app": "elasticsearch-logging",
-            "kubernetes.io/cluster-service": "true",
-            "kubernetes.io/name": "Elasticsearch"
-          }
-        },
-        "spec": {
-          "ports": [
-            {
-              "port": 9200,
-              "protocol": "TCP",
-              "targetPort": "db"
-            }
-          ],
-          "selector": {
-            "k8s-app": "elasticsearch-logging"
-          }
-        }
-      }
-  - path: /srv/kubernetes/manifests/kibana-controller.json
-    content: |
-      {
-        "apiVersion": "v1",
-        "kind": "ReplicationController",
-        "metadata": {
-          "name": "kibana-logging-v1",
-          "namespace": "kube-system",
-          "labels": {
-            "k8s-app": "kibana-logging",
-            "version": "v1",
-            "kubernetes.io/cluster-service": "true"
-          }
-        },
-        "spec": {
-          "replicas": 1,
-          "selector": {
-            "k8s-app": "kibana-logging",
-            "version": "v1"
-          },
-          "template": {
-            "metadata": {
-              "labels": {
-                "k8s-app": "kibana-logging",
-                "version": "v1",
-                "kubernetes.io/cluster-service": "true"
-              }
-            },
-            "spec": {
-              "containers": [
-                {
-                  "name": "kibana-logging",
-                  "image": "gcr.io/google_containers/kibana:1.3",
-                  "resources": {
-                    "limits": {
-                      "cpu": "100m"
-                    },
-                    "requests": {
-                      "cpu": "100m"
-                    }
-                  },
-                  "env": [
-                    {
-                      "name": "ELASTICSEARCH_URL",
-                      "value": "http://elasticsearch-logging:9200"
-                    }
-                  ],
-                  "ports": [
-                    {
-                      "containerPort": 5601,
-                      "name": "ui",
-                      "protocol": "TCP"
-                    }
-                  ]
-                }
-              ]
-            }
-          }
-        }
-      }
-  - path: /srv/kubernetes/manifests/kibana-service.json
-    content: |
-      {
-        "apiVersion": "v1",
-        "kind": "Service",
-        "metadata": {
-          "name": "kibana-logging",
-          "namespace": "kube-system",
-          "labels": {
-            "k8s-app": "kibana-logging",
-            "kubernetes.io/cluster-service": "true",
-            "kubernetes.io/name": "Kibana"
-          }
-        },
-        "spec": {
-          "ports": [
-            {
-              "port": 5601,
-              "protocol": "TCP",
-              "targetPort": "ui"
-            }
-          ],
-          "selector": {
-            "k8s-app": "kibana-logging"
           }
         }
       }

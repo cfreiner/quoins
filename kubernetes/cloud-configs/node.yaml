@@ -2,27 +2,36 @@
 coreos:
   update:
     reboot-strategy: "off"
-  etcd2:
-    proxy: "on"
-    listen-client-urls: "http://127.0.0.1:2379,http://127.0.0.1:4001"
-    peer-trusted-ca-file: "/etc/kubernetes/tls/ca-chain.pem"
-    peer-cert-file: "/etc/kubernetes/tls/etcd-client.pem"
-    peer-key-file: "/etc/kubernetes/tls/etcd-client-key.pem"
-    trusted-ca-file: "/etc/kubernetes/tls/ca-chain.pem"
-    cert-file: "/etc/kubernetes/tls/etcd-client.pem"
-    key-file: "/etc/kubernetes/tls/etcd-client-key.pem"
-  flannel:
-    interface: "$private_ipv4"
   units:
     - name: kubelet.service
       command: start
       content: |
         [Unit]
-        Wants=flanneld.service
+        Wants=flanneld.service docker.service
 
         [Service]
         ExecStartPre=/usr/bin/systemctl is-active flanneld.service
-        ExecStart=/opt/bin/kubelet-wrapper.sh
+        Environment=KUBELET_IMAGE_TAG=${kubernetes_version}
+        Environment="RKT_RUN_ARGS=--uuid-file-save=/var/run/kubelet-pod.uuid \
+          --volume dns,kind=host,source=/etc/resolv.conf \
+          --mount volume=dns,target=/etc/resolv.conf \
+          --volume var-log,kind=host,source=/var/log \
+          --mount volume=var-log,target=/var/log"
+        ExecStartPre=/usr/bin/mkdir -p /var/log/containers
+        ExecStartPre=-/usr/bin/rkt rm --uuid-file=/var/run/kubelet-pod.uuid
+        ExecStart=/usr/lib/coreos/kubelet-wrapper \
+          --api-servers=https://${kubernetes_api_dns_name}:443 \
+          --cni-conf-dir=/etc/kubernetes/cni/net.d \
+          --container-runtime=docker \
+          --register-node=true \
+          --allow-privileged=true \
+          --pod-manifest-path=/etc/kubernetes/manifests \
+          --cluster_dns=${kubernetes_dns_service_ip} \
+          --cluster_domain=cluster.local \
+          --kubeconfig=/etc/kubernetes/node-kubeconfig.yaml \
+          --tls-cert-file=/etc/kubernetes/tls/node.pem \
+          --tls-private-key-file=/etc/kubernetes/tls/node-key.pem
+        ExecStop=-/usr/bin/rkt stop --uuid-file=/var/run/kubelet-pod.uuid
         Restart=always
         RestartSec=10
 
@@ -89,6 +98,9 @@ coreos:
             [Unit]
             Requires=flanneld.service
             After=flanneld.service
+
+            [Service]
+            EnvironmentFile=/etc/kubernetes/cni/docker_opts_cni.env
     - name: opt-logging.mount
       command: start
       content: |
@@ -193,23 +205,40 @@ coreos:
 
         [Install]
         RequiredBy=var-lib-docker.mount
-    - name: etcd2.service
+    - name: flanneld.service
       command: start
       drop-ins:
-        - name: 60-initial-cluster.conf
+        - name: 40-ExecStartPre-symlink.conf
           content: |
             [Unit]
-            Requires=prepare-tls-assets.service
-            After=prepare-tls-assets.service
+            Wants=etcd-cluster-health.service
+            After=etcd-cluster-health.service
 
             [Service]
-            EnvironmentFile=/var/run/coreos/initial-cluster
+            ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
+    - name: etcd-cluster-health.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Before=flanneld.service
+
+        [Service]
+        Type=simple
+        StartLimitInterval=0
+        RestartSec=10
+        Restart=on-failure
+        EnvironmentFile=/etc/environment
+        ExecStart=/bin/etcdctl --endpoints=$etcd_endpoint_urls cluster-health
+
+        [Install]
+        RequiredBy=flanneld.service
     - name: prepare-tls-assets.service
       command: start
       content: |
         [Unit]
-        Description=Prepare etcd2 TLS assets
-        Before=etcd2.service
+        Description=Prepare TLS assets
+        Before=etcd-cluster-health.service
 
         [Service]
         Type=oneshot
@@ -217,11 +246,14 @@ coreos:
         ExecStart=/opt/bin/prepare-tls-assets.sh
 
         [Install]
-        RequiredBy=etcd2.service
+        RequiredBy=etcd-cluster-health.service
     - name: update-engine.service
       command: stop
       enable: false
     - name: locksmithd.service
+      command: stop
+      enable: false
+    - name: etcd2.service
       command: stop
       enable: false
 write_files:
@@ -230,6 +262,34 @@ write_files:
     content: |
       COREOS_PUBLIC_IPV4=$public_ipv4
       COREOS_PRIVATE_IPV4=$private_ipv4
+      ETCDCTL_API=3
+      ETCDCTL_CA_FILE=/etc/kubernetes/tls/ca-chain.pem
+      ETCDCTL_CERT_FILE=/etc/kubernetes/tls/etcd-client.pem
+      ETCDCTL_KEY_FILE=/etc/kubernetes/tls/etcd-client-key.pem
+  - path: /etc/flannel/options.env
+    permissions: 0644
+    content: |
+      ETCD_SSL_DIR=/etc/kubernetes/tls
+      FLANNELD_IFACE=$private_ipv4
+      FLANNELD_ETCD_ENDPOINTS=$etcd_endpoint_urls
+      FLANNELD_ETCD_CAFILE=/etc/kubernetes/tls/ca-chain.pem
+      FLANNELD_ETCD_CERTFILE=/etc/kubernetes/tls/etcd-client.pem
+      FLANNELD_ETCD_KEYFILE=/etc/kubernetes/tls/etcd-client-key.pem
+  - path: /etc/kubernetes/cni/docker_opts_cni.env
+    permissions: 0644
+    content: |
+      DOCKER_OPT_BIP=""
+      DOCKER_OPT_IPMASQ=""
+  - path: /etc/kubernetes/cni/net.d/10-flannel.conf
+    permissions: 0644
+    content: |
+      {
+          "name": "podnet",
+          "type": "flannel",
+          "delegate": {
+              "isDefaultGateway": true
+          }
+      }
   - path: /opt/bin/prepare-tls-assets.sh
     permissions: 0700
     owner: root:root
@@ -261,34 +321,6 @@ write_files:
         daily
         create 0644 root root
       }
-  - path: /opt/bin/kubelet-wrapper.sh
-    permissions: 0700
-    owner: root:root
-    content: |
-      #!/usr/bin/bash
-
-      set -e
-
-      if [ ! -f /opt/bin/kubelet ]; then
-        mkdir -p /opt/bin
-        curl -L -o /opt/bin/kubelet https://s3-us-west-2.amazonaws.com/concur-native-binarys/kubernetes/${kubernetes_version}/kubelet
-        chmod 700 /opt/bin/kubelet
-      fi
-
-      /opt/bin/kubelet \
-        --allow-privileged=true \
-        --api-servers=https://${kubernetes_api_dns_name}:443 \
-        --register-node=true \
-        --cadvisor-port=0 \
-        --cluster-domain=cluster.local \
-        --cluster-dns=${kubernetes_dns_service_ip} \
-        --config=/etc/kubernetes/manifests \
-        --cloud-provider=aws \
-        --kubeconfig=/etc/kubernetes/node-kubeconfig.yaml \
-        --tls-cert-file=/etc/kubernetes/tls/node.pem \
-        --tls-private-key-file=/etc/kubernetes/tls/node-key.pem \
-        --logtostderr=true \
-        --v=2
   - path: /etc/kubernetes/manifests/kube-proxy.yaml
     content: |
       apiVersion: v1
@@ -306,7 +338,6 @@ write_files:
           - proxy
           - --master=https://${kubernetes_api_dns_name}:443
           - --kubeconfig=/etc/kubernetes/node-kubeconfig.yaml
-          - --proxy-mode=iptables
           securityContext:
             privileged: true
           volumeMounts:
@@ -347,36 +378,3 @@ write_files:
           user:
             client-certificate: /etc/kubernetes/tls/api-server-client.pem
             client-key: /etc/kubernetes/tls/api-server-client-key.pem
-  - path: /etc/kubernetes/manifests/fluentd-es.yaml
-    content: |
-      apiVersion: v1
-      kind: Pod
-      metadata:
-        name: fluentd-elasticsearch
-        namespace: kube-system
-        labels:
-          k8s-app: fluentd-logging
-      spec:
-        containers:
-        - name: fluentd-elasticsearch
-          image: gcr.io/google_containers/fluentd-elasticsearch:1.15
-          resources:
-            limits:
-              memory: 200Mi
-            requests:
-              cpu: 100m
-              memory: 200Mi
-          volumeMounts:
-          - name: varlog
-            mountPath: /var/log
-          - name: varlibdockercontainers
-            mountPath: /var/lib/docker/containers
-            readOnly: true
-        terminationGracePeriodSeconds: 30
-        volumes:
-        - name: varlog
-          hostPath:
-            path: /var/log
-        - name: varlibdockercontainers
-          hostPath:
-            path: /var/lib/docker/containers

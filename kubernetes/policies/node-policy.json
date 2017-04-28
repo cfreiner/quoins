@@ -9,9 +9,11 @@
       ],
       "Resource": [
         "arn:aws:s3:::concur-${name}",
-        "arn:aws:s3:::concur-${name}/cloudinit/etcd/initial-cluster",
         "arn:aws:s3:::concur-${name}/cloudinit/common/tls/*",
-        "arn:aws:s3:::concur-${name}/cloudinit/node/*"
+        "arn:aws:s3:::concur-${name}/cloudinit/node/*",
+        "arn:aws:s3:::concur-${name}-etcd",
+        "arn:aws:s3:::concur-${name}-etcd/cloudinit",
+        "arn:aws:s3:::concur-${name}-etcd/cloudinit/common/tls/*"
       ]
     },
     {
@@ -37,6 +39,16 @@
       "Effect": "Allow",
       "Action": "ec2:DetachVolume",
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "autoscaling:Describe*"
+      ],
+      "Resource": [
+        "*"
+      ]
     }
   ]
 }

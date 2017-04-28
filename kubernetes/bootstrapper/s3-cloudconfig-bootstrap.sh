@@ -34,6 +34,7 @@ mkdir -m 700 -p "$work_dir"
 cloudinit_src="s3://$bucket/cloudinit/$role"
 cloudinit_dst="$work_dir"
 cloudinit_common_tls_src="s3://$bucket/cloudinit/common/tls"
+cloudinit_etcd_tls_src="s3://$bucket-etcd/cloudinit/common/tls"
 cloudinit_tls_dst="$work_dir/tls"
 
 # pull the IMAGE if not loaded
@@ -52,7 +53,31 @@ dst="$cloudinit_tls_dst"
 cmd="aws --region $region s3 cp --recursive $src $dst"
 docker run --rm --name s3cp-common-tls -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
 
+# Sync Etcd TLS Assets
+src="$cloudinit_etcd_tls_src"
+dst="$cloudinit_tls_dst"
+cmd="aws --region $region s3 cp --recursive $src $dst"
+docker run --rm --name s3cp-common-tls -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
+
+# Retrieving Etcd instances
+cmd="aws autoscaling describe-auto-scaling-groups --region $region --auto-scaling-group-name ${name}-etcd | jq -r '.AutoScalingGroups | length'"
+while [ $(docker run --rm --name etcd-instances \
+  "$image" /bin/bash -c "$cmd") -eq 0 ]
+do
+  sleep 3m
+done
+
+cmd="aws autoscaling describe-auto-scaling-groups --region $region --auto-scaling-group-name ${name}-etcd | jq -r '.AutoScalingGroups[0].Instances[] | select(.LifecycleState  == \"InService\") | .InstanceId' | xargs"
+etcd_instance_ids=$(docker run --rm --name etcd-instances \
+  "$image" /bin/bash -c "$cmd")
+
+cmd="aws ec2 describe-instances --region $region --instance-ids $etcd_instance_ids | jq -r '.Reservations[].Instances | map(\"https://\" + .PrivateDnsName + \":2379\")[]' | xargs | sed 's/  */,/g'"
+etcd_endpoint_urls=$(docker run --rm --name etcd-urls \
+  "$image" /bin/bash -c "$cmd")
+
 # Replace placeholders inside cloud-config
+sed -i -- 's;\$etcd_endpoint_urls;'$etcd_endpoint_urls';g' $work_dir/cloud-config.yaml
+
 sed -i -- 's/\\$private_ipv4/'$private_ipv4'/g; s/\\$public_ipv4/'$public_ipv4'/g' $work_dir/cloud-config.yaml
 
 # Decode TLS Assets
@@ -67,7 +92,7 @@ docker run --rm --name decrypt-tls \
   -e REGION=$region \
   -e WORK_DIR=$work_dir/tls \
   -v $work_dir/tls:$work_dir/tls \
-  quay.io/concur_platform/awscli:0.1.1 /bin/bash \
+  "$image" /bin/bash \
     -ec \
     'echo Decrypting TLS assets; \
     shopt -s nullglob; \
@@ -90,37 +115,6 @@ then
   echo "QUOIN_NAME=${name}" > /etc/quoin-environment
   echo "REGION=$region" >> /etc/quoin-environment
   echo "AVAILABILITY_ZONE=$availability_zone" >> /etc/quoin-environment
-fi
-
-# If our role is not etcd, then prepare initial-cluster for proxies
-if [ ! $role = "etcd" ]; then
-  initial_cluster_src="s3://$bucket/cloudinit/etcd/initial-cluster"
-  initial_cluster_dst="$work_dir/initial-cluster"
-  
-  # Copy initial-cluster
-  src="$initial_cluster_src"
-  dst="$initial_cluster_dst"
-  cmd="aws --region $region s3 cp $src $dst"
-  docker run --rm --name s3cp -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
-
-  # If initial-cluster is not found
-  # Run copy again in a loop until initial-cluster is found
-  # This is mainly for timing when launching a cluster from scratch
-  if [ ! -f "$initial_cluster_dst" ]; then
-    until [ -f "$initial_cluster_dst" ]; do
-      # Add a small delay before copy to make sure we give the etcd cluster enough time
-      # during initial launch
-      sleep 360
-      docker run --rm --name s3cp -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
-    done
-  fi
-
-  # Copy initial-cluster to the volume that will be picked up by etcd boostraping
-  if [ -f "$work_dir/initial-cluster" ] && grep -q ETCD_INITIAL_CLUSTER $work_dir/initial-cluster ;
-  then
-    mkdir -p /var/run/coreos
-    cp "$work_dir/initial-cluster" /var/run/coreos/initial-cluster
-  fi
 fi
 
 # Clean up and reset for cloudinit

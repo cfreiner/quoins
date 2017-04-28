@@ -110,8 +110,8 @@
 *   node_docker_volume_size               = "12"
 *   node_data_volume_size                 = "12"
 *   node_logging_volume_size              = "12"
-*   kubernetes_hyperkube_image_repo       = "gcr.io/google_containers/hyperkube"
-*   kubernetes_version                    = "v1.2.4"
+*   kubernetes_hyperkube_image_repo       = "quay.io/coreos/hyperkube"
+*   kubernetes_version                    = "v1.6.2_coreos.0"
 *   kubernetes_service_cidr               = "10.3.0.1/24"
 *   kubernetes_dns_service_ip             = "10.3.0.10"
 *   kubernetes_pod_cidr                   = "10.2.0.0/16"
@@ -160,12 +160,12 @@ variable "intermediate_cert" {
 
 variable "kubernetes_hyperkube_image_repo" {
   description = "The hyperkube image repository to use."
-  default     = "gcr.io/google_containers/hyperkube"
+  default     = "quay.io/coreos/hyperkube"
 }
 
 variable "kubernetes_version" {
   description = "The version of the hyperkube image to use. This is the tag for the hyperkube image repository"
-  default     = "v1.2.4"
+  default     = "v1.6.2_coreos.0"
 }
 
 variable "kubernetes_service_cidr" {

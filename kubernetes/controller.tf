@@ -93,7 +93,7 @@ resource "aws_launch_configuration" "controller" {
   iam_instance_profile = "${aws_iam_instance_profile.controller.name}"
   security_groups      = ["${aws_security_group.kubernetes.id}"]
   key_name             = "${module.key_pair.key_name}"
-  depends_on           = ["aws_subnet.internal", "aws_s3_bucket.cluster", "aws_autoscaling_group.etcd", "aws_launch_configuration.etcd", "aws_s3_bucket_object.controller", "aws_iam_instance_profile.controller", "aws_security_group.kubernetes"]
+  depends_on           = ["aws_subnet.internal", "aws_s3_bucket.cluster", "module.etcd", "aws_s3_bucket_object.controller", "aws_iam_instance_profile.controller", "aws_security_group.kubernetes"]
 
   # /root
   root_block_device = {
@@ -232,6 +232,7 @@ data "template_file" "controller" {
   template = "${file(format("%s/cloud-configs/controller.yaml", path.module))}"
 
   vars {
+    name                            = "${var.name}"
     kubernetes_hyperkube_image_repo = "${var.kubernetes_hyperkube_image_repo}"
     kubernetes_version              = "${var.kubernetes_version}"
     kubernetes_service_cidr         = "${var.kubernetes_service_cidr}"

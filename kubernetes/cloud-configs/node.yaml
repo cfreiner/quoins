@@ -98,9 +98,6 @@ coreos:
             [Unit]
             Requires=flanneld.service
             After=flanneld.service
-
-            [Service]
-            EnvironmentFile=/etc/kubernetes/cni/docker_opts_cni.env
     - name: opt-logging.mount
       command: start
       content: |
@@ -275,11 +272,6 @@ write_files:
       FLANNELD_ETCD_CAFILE=/etc/kubernetes/tls/ca-chain.pem
       FLANNELD_ETCD_CERTFILE=/etc/kubernetes/tls/etcd-client.pem
       FLANNELD_ETCD_KEYFILE=/etc/kubernetes/tls/etcd-client-key.pem
-  - path: /etc/kubernetes/cni/docker_opts_cni.env
-    permissions: 0644
-    content: |
-      DOCKER_OPT_BIP=""
-      DOCKER_OPT_IPMASQ=""
   - path: /etc/kubernetes/cni/net.d/10-flannel.conf
     permissions: 0644
     content: |

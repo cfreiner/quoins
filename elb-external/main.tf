@@ -5,14 +5,15 @@
 *
 * ```hcl
 * module "elb-unsecure" {
-*   source        = "github.com/concur/quoins//elb-external"
-*   name          = "elb-unsecure"
-*   vpc_id        = "vpc-123456"
-*   subnet_ids    = "subnet-123456,subnet-123457,subnet-123458"
-*   lb_port       = "80"
-*   instance_port = "30000"
-*   healthcheck   = "/health"
-*   protocol      = "HTTP"
+*   source             = "github.com/concur/quoins//elb-external"
+*   name               = "elb-unsecure"
+*   vpc_id             = "vpc-123456"
+*   subnet_ids         = "subnet-123456,subnet-123457,subnet-123458"
+*   lb_port            = "80"
+*   instance_port      = "30000"
+*   healthcheck        = "/health"
+*   protocol           = "HTTP"
+*   instance_protocol  = "HTTP"
 * }
 
 * module "elb-secure" {
@@ -24,6 +25,7 @@
 *   instance_port      = "30000"
 *   healthcheck        = "/health"
 *   protocol           = "HTTPS"
+*   instance_protocol  = "HTTP"
 *   ssl_certificate_id = "arn:aws:..."
 * }
 
@@ -64,7 +66,11 @@ variable "healthcheck" {
 }
 
 variable "protocol" {
-  description = "Protocol to use, HTTP or TCP"
+  description = "Protocol to use, HTTPS, HTTP or TCP"
+}
+
+variable "instance_protocol" {
+  description = "Protocol to use, HTTPS, HTTP or TCP"
 }
 
 variable "ssl_certificate_id" {
@@ -128,7 +134,7 @@ resource "aws_elb" "external" {
     lb_port            = "${var.lb_port}"
     lb_protocol        = "${var.protocol}"
     instance_port      = "${var.instance_port}"
-    instance_protocol  = "${var.protocol}"
+    instance_protocol  = "${var.instance_protocol}"
     ssl_certificate_id = "${var.ssl_certificate_id}"
   }
 
@@ -136,7 +142,7 @@ resource "aws_elb" "external" {
     healthy_threshold   = 10
     unhealthy_threshold = 2
     timeout             = 5
-    target              = "${var.protocol}:${var.instance_port}${var.healthcheck}"
+    target              = "${var.instance_protocol}:${var.instance_port}${var.healthcheck}"
     interval            = 30
   }
 

@@ -8,6 +8,14 @@ variable "subnet_ids" {
   description = "A comma-separated list of subnet ids to use for the instances."
 }
 
+variable "rethink_elb_cert" {
+  description = "The public certificate to be used by the ELB that fronts rethink instances encoded in PEM format."
+}
+
+variable "rethink_elb_key" {
+  description = "The private key to be used by the ELB that fronts rethink instances encode in PEM format."
+}
+
 variable "rethink_cluster_cert" {
   description = "The public certificate to be used by rethink servers for peer connections encoded in base64 format."
 }
@@ -151,7 +159,8 @@ resource "aws_elb" "rethink" {
     instance_port     = 28015
     instance_protocol = "ssl"
     lb_port           = 28015
-    lb_protocol       = "tcp"
+    lb_protocol       = "ssl"
+    ssl_certificate_id = "${aws_iam_server_certificate.rethink_elb_certificate.arn}"
   }
 
   health_check {
@@ -219,6 +228,12 @@ resource "aws_load_balancer_backend_server_policy" "rethink_auth_policies_28015"
   policy_names = [
     "${aws_load_balancer_policy.rethink_backend_auth_policy.policy_name}",
   ]
+}
+
+resource "aws_iam_server_certificate" "rethink_elb_certificate" {
+  name             = "${format("%s-elb-cert", var.name)}"
+  certificate_body = "${var.rethink_elb_cert}"
+  private_key      = "${var.rethink_elb_key}"
 }
 
 # Security Group

@@ -66,6 +66,10 @@ variable "key_name" {
   description = "A name for the given key pair to use for instances."
 }
 
+variable "bastion_security_group_id" {
+  description = "Security Group ID for bastion instance with external SSH allows ssh connections on port 22"
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -133,14 +137,13 @@ resource "aws_launch_configuration" "etcd" {
 resource "aws_security_group" "etcd" {
   name       = "${format("%s-%s", var.name, element(split("-", var.vpc_id), 1))}"
   vpc_id     = "${var.vpc_id}"
-  depends_on = ["aws_security_group.bastion"]
 
   # Allow SSH from the bastion
   ingress {
     from_port       = 22
     to_port         = 22
     protocol        = "tcp"
-    security_groups = ["${aws_security_group.bastion.id}"]
+    security_groups = ["${var.bastion_security_group_id}"]
   }
 
   # Allow etcd peers to communicate, include etcd proxies

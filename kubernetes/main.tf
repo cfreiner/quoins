@@ -21,7 +21,7 @@
 * * One public subnet and one private subnet in each availability zone.
 * * Subnets are dynamic and react to the number of availability zones within the region.
 * * A NAT gateway in each availability zone.
-* * A security group for bastions to use.
+* * Reference to a security group for bastions to use.
 * * CoreOS is used as the host operating system for all instances.
 * * The certificates are used to completely secure the communication between etcd, controllers, and nodes.
 * * Creates a dedicated etcd cluster within the private subnets using an auto scaling group.
@@ -115,6 +115,7 @@
 *   kubernetes_service_cidr               = "10.3.0.1/24"
 *   kubernetes_dns_service_ip             = "10.3.0.10"
 *   kubernetes_pod_cidr                   = "10.2.0.0/16"
+*   bastion_security_group_id             = "sg-xxxxxxxx"
 * }
 *
 * provider "aws" {
@@ -183,6 +184,10 @@ variable "kubernetes_pod_cidr" {
   default     = "10.2.0.0/16"
 }
 
+variable "bastion_security_group_id" {
+  description = "Security Group ID for bastion instance with external SSH allows ssh connections on port 22"
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -193,7 +198,7 @@ variable "kubernetes_pod_cidr" {
 resource "aws_security_group" "kubernetes" {
   name       = "${format("%s-kubernetes-%s", var.name, element(split("-", var.vpc_id), 1))}"
   vpc_id     = "${var.vpc_id}"
-  depends_on = ["aws_security_group.bastion", "aws_security_group.balancers"]
+  depends_on = ["aws_security_group.balancers"]
 
   # All any traffic with this security group
   # Allows controllers to talk to controllers
@@ -212,7 +217,7 @@ resource "aws_security_group" "kubernetes" {
     from_port       = 22
     to_port         = 22
     protocol        = "tcp"
-    security_groups = ["${aws_security_group.bastion.id}"]
+    security_groups = ["${var.bastion_security_group_id}"]
   }
 
   # Allow HTTP traffic from load balancers

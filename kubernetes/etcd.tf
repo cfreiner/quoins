@@ -65,40 +65,30 @@ variable "etcd_data_volume_size" {
 */
 
 module "etcd" {
-  source                = "../etcd"
-  name                  = "${format("%s-etcd", var.name)}"
-  region                = "${var.region}"
-  role_type             = "${var.role_type}"
-  cost_center           = "${var.cost_center}"
-  vpc_id                = "${var.vpc_id}"
-  vpc_cidr              = "${var.vpc_cidr}"
-  availability_zones    = "${var.availability_zones}"
-  subnet_ids            = "${join(",", aws_subnet.internal.*.id)}"
-  kms_key_arn           = "${var.kms_key_arn}"
-  key_name              = "${module.key_pair.key_name}"
-  root_cert             = "${var.root_cert}"
-  intermediate_cert     = "${var.intermediate_cert}"
-  etcd_server_cert      = "${var.etcd_server_cert}"
-  etcd_server_key       = "${var.etcd_server_key}"
-  etcd_client_cert      = "${var.etcd_client_cert}"
-  etcd_client_key       = "${var.etcd_client_key}"
-  etcd_peer_cert        = "${var.etcd_peer_cert}"
-  etcd_peer_key         = "${var.etcd_peer_key}"
-  etcd_instance_type    = "${var.etcd_instance_type}"
-  etcd_min_size         = "${var.etcd_min_size}"
-  etcd_max_size         = "${var.etcd_max_size}"
-  etcd_desired_capacity = "${var.etcd_desired_capacity}"
-  etcd_root_volume_size = "${var.etcd_root_volume_size}"
-  etcd_data_volume_size = "${var.etcd_data_volume_size}"
-}
-
-/*
-* ------------------------------------------------------------------------------
-* Outputs
-* ------------------------------------------------------------------------------
-*/
-
-# The etcd bastion security group ID
-output "etcd_bastion_security_group_id" {
-  value = "${module.etcd.bastion_security_group_id}"
+  source                    = "../etcd"
+  name                      = "${format("%s-etcd", var.name)}"
+  region                    = "${var.region}"
+  role_type                 = "${var.role_type}"
+  cost_center               = "${var.cost_center}"
+  vpc_id                    = "${var.vpc_id}"
+  vpc_cidr                  = "${var.vpc_cidr}"
+  availability_zones        = "${var.availability_zones}"
+  subnet_ids                = "${join(",", aws_subnet.internal.*.id)}"
+  kms_key_arn               = "${var.kms_key_arn}"
+  key_name                  = "${module.key_pair.key_name}"
+  root_cert                 = "${var.root_cert}"
+  intermediate_cert         = "${var.intermediate_cert}"
+  etcd_server_cert          = "${var.etcd_server_cert}"
+  etcd_server_key           = "${var.etcd_server_key}"
+  etcd_client_cert          = "${var.etcd_client_cert}"
+  etcd_client_key           = "${var.etcd_client_key}"
+  etcd_peer_cert            = "${var.etcd_peer_cert}"
+  etcd_peer_key             = "${var.etcd_peer_key}"
+  etcd_instance_type        = "${var.etcd_instance_type}"
+  etcd_min_size             = "${var.etcd_min_size}"
+  etcd_max_size             = "${var.etcd_max_size}"
+  etcd_desired_capacity     = "${var.etcd_desired_capacity}"
+  etcd_root_volume_size     = "${var.etcd_root_volume_size}"
+  etcd_data_volume_size     = "${var.etcd_data_volume_size}"
+  bastion_security_group_id = "${var.bastion_security_group_id}"
 }

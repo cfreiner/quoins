@@ -88,6 +88,10 @@ resource "aws_autoscaling_group" "etcd" {
   force_delete         = true
   launch_configuration = "${aws_launch_configuration.etcd.name}"
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tag {
     key                 = "Name"
     value               = "${format("%s", var.name)}"
@@ -115,6 +119,10 @@ resource "aws_launch_configuration" "etcd" {
   security_groups      = ["${aws_security_group.etcd.id}"]
   key_name             = "${var.key_name}"
   depends_on           = ["aws_s3_bucket.cluster", "aws_s3_bucket_object.etcd", "aws_iam_instance_profile.etcd", "aws_security_group.etcd"]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   # /root
   root_block_device = {

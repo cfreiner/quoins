@@ -98,6 +98,10 @@ resource "aws_autoscaling_group" "rethink" {
   load_balancers       = ["${aws_elb.rethink.id}"]
   launch_configuration = "${aws_launch_configuration.rethink.name}"
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tag {
     key                 = "Name"
     value               = "${format("%s", var.name)}"
@@ -125,6 +129,10 @@ resource "aws_launch_configuration" "rethink" {
   security_groups      = ["${aws_security_group.rethink.id}"]
   key_name             = "${var.key_name}"
   depends_on           = ["aws_s3_bucket.cluster", "aws_s3_bucket_object.rethink", "aws_iam_instance_profile.rethink", "aws_security_group.rethink"]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   # /root
   root_block_device = {

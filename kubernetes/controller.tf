@@ -61,6 +61,10 @@ resource "aws_autoscaling_group" "controller" {
   load_balancers       = ["${aws_elb.kubernetes_api.id}"]
   launch_configuration = "${aws_launch_configuration.controller.name}"
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tag {
     key                 = "Name"
     value               = "${format("%s-controller", var.name)}"
@@ -94,6 +98,10 @@ resource "aws_launch_configuration" "controller" {
   security_groups      = ["${aws_security_group.kubernetes.id}"]
   key_name             = "${module.key_pair.key_name}"
   depends_on           = ["aws_subnet.internal", "aws_s3_bucket.cluster", "module.etcd", "aws_s3_bucket_object.controller", "aws_iam_instance_profile.controller", "aws_security_group.kubernetes"]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   # /root
   root_block_device = {

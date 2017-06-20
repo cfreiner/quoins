@@ -78,6 +78,10 @@ resource "aws_autoscaling_group" "node" {
   force_delete         = true
   launch_configuration = "${aws_launch_configuration.node.name}"
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tag {
     key                 = "Name"
     value               = "${format("%s-node", var.name)}"
@@ -111,6 +115,10 @@ resource "aws_launch_configuration" "node" {
   security_groups      = ["${aws_security_group.kubernetes.id}"]
   key_name             = "${module.key_pair.key_name}"
   depends_on           = ["aws_subnet.internal", "aws_s3_bucket.cluster", "aws_autoscaling_group.controller", "aws_launch_configuration.controller", "aws_s3_bucket_object.node", "aws_iam_instance_profile.node", "aws_security_group.kubernetes"]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   # /root
   root_block_device = {

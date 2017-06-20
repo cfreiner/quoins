@@ -98,6 +98,10 @@ resource "aws_autoscaling_group" "vault" {
   load_balancers       = ["${aws_elb.vault.id}"]
   launch_configuration = "${aws_launch_configuration.vault.name}"
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tag {
     key                 = "Name"
     value               = "${format("%s", var.name)}"
@@ -125,6 +129,10 @@ resource "aws_launch_configuration" "vault" {
   security_groups      = ["${aws_security_group.vault.id}"]
   key_name             = "${var.key_name}"
   depends_on           = ["aws_s3_bucket.cluster", "aws_s3_bucket_object.vault", "aws_iam_instance_profile.vault", "aws_security_group.vault"]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   # /root
   root_block_device = {

@@ -135,6 +135,11 @@ variable "name" {
   description = "The name of your quoin."
 }
 
+variable "version" {
+  description = "The version number of your infrastructure, used to aid in zero downtime deployments of new infrastructure."
+  default     = "latest"
+}
+
 variable "region" {
   description = "Region where resources will be created."
 }

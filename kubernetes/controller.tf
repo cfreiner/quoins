@@ -202,7 +202,7 @@ resource "aws_s3_bucket_object" "api_server_key" {
 
 # Profile, Role, and Policy
 resource "aws_iam_instance_profile" "controller" {
-  name       = "${format("%s-controller", var.name)}"
+  name       = "${format("%s-controller-%s-%s", var.name, var.region, var.version)}"
   roles      = ["${aws_iam_role.controller.name}"]
   depends_on = ["aws_iam_role.controller", "aws_iam_role_policy.controller_policy"]
 }
@@ -215,7 +215,7 @@ resource "aws_iam_role_policy" "controller_policy" {
 }
 
 resource "aws_iam_role" "controller" {
-  name               = "${format("%s-controller", var.name)}"
+  name               = "${format("%s-controller-%s-%s", var.name, var.region, var.version)}"
   path               = "/"
   assume_role_policy = "${file(format("%s/policies/assume-role-policy.json", path.module))}"
 }

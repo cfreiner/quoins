@@ -324,7 +324,7 @@ resource "aws_s3_bucket_object" "rethink_driver_key" {
 
 # Profile, Role, and Policy
 resource "aws_iam_instance_profile" "rethink" {
-  name       = "${format("%s", var.name)}"
+  name       = "${format("%s-%s-%s", var.name, var.region, var.version)}"
   roles      = ["${aws_iam_role.rethink.name}"]
   depends_on = ["aws_iam_role.rethink", "aws_iam_role_policy.rethink_policy"]
 }
@@ -337,7 +337,7 @@ resource "aws_iam_role_policy" "rethink_policy" {
 }
 
 resource "aws_iam_role" "rethink" {
-  name               = "${format("%s", var.name)}"
+  name               = "${format("%s-%s-%s", var.name, var.region, var.version)}"
   path               = "/"
   assume_role_policy = "${file(format("%s/policies/assume-role-policy.json", path.module))}"
 }

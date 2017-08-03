@@ -25,16 +25,8 @@ variable "cost_center" {
   description = "The cost center to attach resource usage."
 }
 
-variable "kms_key_arn" {
-  description = "The arn associated with the encryption key used for encrypting the certificates."
-}
-
-variable "root_cert" {
-  description = "The root certificate authority that all certificates belong to encoded in base64 format."
-}
-
-variable "intermediate_cert" {
-  description = "The intermediate certificate authority that all certificates belong to encoded in base64 format."
+variable "tls_provision" {
+  description = "The TLS ca and assets provision script."
 }
 
 variable "vpc_id" {
@@ -55,17 +47,11 @@ variable "availability_zones" {
 * ------------------------------------------------------------------------------
 */
 
-# Certificates
-resource "aws_s3_bucket_object" "root_cert" {
+# Certificates Provision Script
+resource "aws_s3_bucket_object" "tls_provision" {
   bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/root-ca.pem.enc.base"
-  content = "${var.root_cert}"
-}
-
-resource "aws_s3_bucket_object" "intermediate_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/intermediate-ca.pem.enc.base"
-  content = "${var.intermediate_cert}"
+  key     = "cloudinit/common/tls/tls-provision.sh"
+  content = "${var.tls_provision}"
 }
 
 /*

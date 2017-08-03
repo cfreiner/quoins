@@ -126,7 +126,12 @@ write_files:
       #!/bin/bash
 
       mkdir -p /etc/etcd/tls
-      mv /root/cloudinit/tls/*.pem /etc/etcd/tls
+      chmod 755 /root/cloudinit/tls/tls-provision.sh
+      cd /root/cloudinit/tls
+      ./tls-provision.sh generate-ca $etcd_cluster_name
+      ./tls-provision.sh generate-assets $etcd_cluster_name
+      mv /root/cloudinit/tls/tls_ca/*.pem /etc/etcd/tls
+      mv /root/cloudinit/tls/tls_assets/*.pem /etc/etcd/tls
   - path: /opt/bin/etcd-init.sh
     permissions: 0700
     owner: root:root

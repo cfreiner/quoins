@@ -49,33 +49,7 @@ docker run --rm --name s3cp-common-tls -v "$work_dir":"$work_dir" "$image" /bin/
 # Replace placeholders inside cloud-config
 sed -i -- 's/\\$private_ipv4/'$private_ipv4'/g; s/\\$public_ipv4/'$public_ipv4'/g' $work_dir/cloud-config.yaml
 
-# Decode TLS Assets
-echo "Decoding TLS assets"
-for encPemFile in $work_dir/tls/*.pem.enc.base; do
-  echo "Decoding $encPemFile"
-  cat $encPemFile | base64 -d > $${encPemFile%.base}
-done
-
-# Decrypt TLS Assets
-docker run --rm --name decrypt-tls \
-  -e REGION=$region \
-  -e WORK_DIR=$work_dir/tls \
-  -v $work_dir/tls:$work_dir/tls \
-  quay.io/concur_platform/awscli:0.1.1 /bin/bash \
-    -ec \
-    'echo Decrypting TLS assets; \
-    shopt -s nullglob; \
-    for encPemFile in $WORK_DIR/*.pem.enc; do \
-      echo Decrypting $encPemFile; \
-      /usr/bin/aws \
-        --region $REGION kms decrypt \
-        --ciphertext-blob fileb://$encPemFile \
-        --output text \
-        --query Plaintext \
-      | base64 -d > $${encPemFile%.enc}; \
-    done; \
-    cat $WORK_DIR/intermediate-ca.pem $WORK_DIR/root-ca.pem > $WORK_DIR/ca-chain.pem; \
-    echo done.'
+sed -i -- 's;\$etcd_cluster_name;'$bucket';g' $work_dir/cloud-config.yaml
 
 # Create /etc/quoin-environment
 quoin_cluster_environment='/etc/quoin-environment'

@@ -9,6 +9,7 @@ coreos:
       runtime: true
       content: |
         [Unit]
+        After=kubelet.service docker.service
         Wants=kubelet.service docker.service
 
         [Service]
@@ -25,7 +26,8 @@ coreos:
       enable: true
       content: |
         [Unit]
-        Wants=flanneld.service
+        After=flanneld.service docker.service
+        Wants=flanneld.service docker.service
 
         [Service]
         ExecStartPre=/usr/bin/systemctl is-active flanneld.service
@@ -175,6 +177,8 @@ coreos:
       content: |
         [Unit]
         Before=flanneld.service
+        After=prepare-tls-assets.service
+        Wants=prepare-tls-assets.service
 
         [Service]
         Type=simple
@@ -191,7 +195,7 @@ coreos:
       enable: true
       content: |
         [Unit]
-        Description=Prepare etcd TLS assets
+        Description=Prepare TLS assets
         Before=etcd-cluster-health.service
 
         [Service]
@@ -217,18 +221,18 @@ write_files:
       COREOS_PUBLIC_IPV4=$public_ipv4
       COREOS_PRIVATE_IPV4=$private_ipv4
       ETCDCTL_API=3
-      ETCDCTL_CA_FILE=/etc/kubernetes/tls/ca-chain.pem
-      ETCDCTL_CERT_FILE=/etc/kubernetes/tls/etcd-client.pem
-      ETCDCTL_KEY_FILE=/etc/kubernetes/tls/etcd-client-key.pem
+      ETCDCTL_CA_FILE=/etc/kubernetes/tls-etcd/ca-chain.pem
+      ETCDCTL_CERT_FILE=/etc/kubernetes/tls-etcd/etcd-client.pem
+      ETCDCTL_KEY_FILE=/etc/kubernetes/tls-etcd/etcd-client-key.pem
   - path: /etc/flannel/options.env
     permissions: 0644
     content: |
-      ETCD_SSL_DIR=/etc/kubernetes/tls
+      ETCD_SSL_DIR=/etc/kubernetes/tls-etcd
       FLANNELD_IFACE=$private_ipv4
       FLANNELD_ETCD_ENDPOINTS=$etcd_endpoint_urls
-      FLANNELD_ETCD_CAFILE=/etc/kubernetes/tls/ca-chain.pem
-      FLANNELD_ETCD_CERTFILE=/etc/kubernetes/tls/etcd-client.pem
-      FLANNELD_ETCD_KEYFILE=/etc/kubernetes/tls/etcd-client-key.pem
+      FLANNELD_ETCD_CAFILE=/etc/kubernetes/tls-etcd/ca-chain.pem
+      FLANNELD_ETCD_CERTFILE=/etc/kubernetes/tls-etcd/etcd-client.pem
+      FLANNELD_ETCD_KEYFILE=/etc/kubernetes/tls-etcd/etcd-client-key.pem
   - path: /etc/kubernetes/cni/net.d/10-flannel.conf
     permissions: 0644
     content: |
@@ -246,7 +250,19 @@ write_files:
       #!/bin/bash
 
       mkdir -p /etc/kubernetes/tls
-      mv /root/cloudinit/tls/*.pem /etc/kubernetes/tls
+      chmod 755 /root/cloudinit/tls/tls-provision.sh
+      cd /root/cloudinit/tls
+      ./tls-provision.sh generate-ca $k8s_cluster_name
+      ./tls-provision.sh generate-assets $k8s_cluster_name
+      mv /root/cloudinit/tls/tls_ca/*.pem /etc/kubernetes/tls
+      mv /root/cloudinit/tls/tls_assets/*.pem /etc/kubernetes/tls
+
+      mkdir -p /etc/kubernetes/tls-etcd
+      etcd_pki=$k8s_cluster_name
+      ./tls-provision.sh generate-ca "$etcd_pki-etcd"
+      ./tls-provision.sh generate-assets "$etcd_pki-etcd"
+      mv /root/cloudinit/tls/tls_ca/*.pem /etc/kubernetes/tls-etcd
+      mv /root/cloudinit/tls/tls_assets/*.pem /etc/kubernetes/tls-etcd
   - path: /opt/bin/docker-gc.sh
     permissions: 0700
     owner: root
@@ -343,9 +359,9 @@ write_files:
           - --runtime-config=extensions/v1beta1/networkpolicies=true
           - --anonymous-auth=false
           - --storage-backend=etcd3
-          - --etcd-cafile=/etc/kubernetes/tls/ca-chain.pem
-          - --etcd-certfile=/etc/kubernetes/tls/etcd-client.pem
-          - --etcd-keyfile=/etc/kubernetes/tls/etcd-client-key.pem
+          - --etcd-cafile=/etc/kubernetes/tls-etcd/ca-chain.pem
+          - --etcd-certfile=/etc/kubernetes/tls-etcd/etcd-client.pem
+          - --etcd-keyfile=/etc/kubernetes/tls-etcd/etcd-client-key.pem
           - --cloud-provider=aws
           livenessProbe:
             httpGet:
@@ -365,6 +381,9 @@ write_files:
           - mountPath: /etc/kubernetes/tls
             name: tls-certs-kubernetes
             readOnly: true
+          - mountPath: /etc/kubernetes/tls-etcd
+            name: tls-certs-etcd
+            readOnly: true
           - mountPath: /etc/tls/certs
             name: tls-certs-host
             readOnly: true
@@ -372,6 +391,9 @@ write_files:
         - hostPath:
             path: /etc/kubernetes/tls
           name: tls-certs-kubernetes
+        - hostPath:
+            path: /etc/kubernetes/tls-etcd
+          name: tls-certs-etcd
         - hostPath:
             path: /usr/share/ca-certificates
           name: tls-certs-host

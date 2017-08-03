@@ -16,15 +16,6 @@
     {
       "Effect": "Allow",
       "Action": [
-        "kms:Decrypt"
-      ],
-      "Resource": [
-        "${kms_key_arn}"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
         "ec2:Describe*",
         "autoscaling:Describe*"
       ],

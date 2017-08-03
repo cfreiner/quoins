@@ -3,23 +3,6 @@
 * Variables
 * ------------------------------------------------------------------------------
 */
-
-variable "node_cert" {
-  description = "The public certificate to be used by k8s nodes encoded in base64 format."
-}
-
-variable "node_key" {
-  description = "The private key to be used by k8s nodes encoded in base64 format."
-}
-
-variable "api_server_client_cert" {
-  description = "The public client certificate to be used for authenticating against k8s api server encoded in base64 format."
-}
-
-variable "api_server_client_key" {
-  description = "The client private key to be used for authenticating against k8s api server encoded in base64 format."
-}
-
 variable "node_instance_type" {
   description = "The type of instance to use for the node cluster. Example: 'm3.medium'"
   default     = "m3.medium"
@@ -160,31 +143,6 @@ resource "aws_s3_bucket_object" "node" {
   content = "${data.template_file.node.rendered}"
 }
 
-# Certificates
-resource "aws_s3_bucket_object" "node_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/node/tls/node.pem.enc.base"
-  content = "${var.node_cert}"
-}
-
-resource "aws_s3_bucket_object" "node_key" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/node/tls/node-key.pem.enc.base"
-  content = "${var.node_key}"
-}
-
-resource "aws_s3_bucket_object" "api_server_client_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/node/tls/api-server-client.pem.enc.base"
-  content = "${var.api_server_client_cert}"
-}
-
-resource "aws_s3_bucket_object" "api_server_client_key" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/node/tls/api-server-client-key.pem.enc.base"
-  content = "${var.api_server_client_key}"
-}
-
 # Profile, Role, and Policy
 resource "aws_iam_instance_profile" "node" {
   name       = "${format("%s-node-%s-%s", var.name, var.region, var.version)}"
@@ -217,7 +175,6 @@ data "template_file" "node_policy" {
 
   vars {
     name        = "${var.name}"
-    kms_key_arn = "${var.kms_key_arn}"
   }
 }
 

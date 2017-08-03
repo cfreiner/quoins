@@ -75,33 +75,19 @@
 *   external_subnets                      = "172.16.0.0/24,172.16.1.0/24,172.16.2.0/24"
 *   internal_subnets                      = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
 *   public_key                            = "${file(format("%s/keys/%s.pub", path.cwd, var.name))}"
-*   kms_key_arn                           = "arn:aws:kms:us-west-2:208127133681:key/709b95f1-90b0-46d3-b1d3-619fb4dfb82a"
-*   root_cert                             = "${file(format("%s/certs/root-ca.pem.enc.base", path.cwd))}"
-*   intermediate_cert                     = "${file(format("%s/certs/intermediate-ca.pem.enc.base", path.cwd))}"
-*   etcd_server_cert                      = "${file(format("%s/certs/etcd-server.pem.enc.base", path.cwd))}"
-*   etcd_server_key                       = "${file(format("%s/certs/etcd-server-key.pem.enc.base", path.cwd))}"
-*   etcd_client_cert                      = "${file(format("%s/certs/etcd-client.pem.enc.base", path.cwd))}"
-*   etcd_client_key                       = "${file(format("%s/certs/etcd-client-key.pem.enc.base", path.cwd))}"
-*   etcd_peer_cert                        = "${file(format("%s/certs/etcd-peer.pem.enc.base", path.cwd))}"
-*   etcd_peer_key                         = "${file(format("%s/certs/etcd-peer-key.pem.enc.base", path.cwd))}"
+*   tls_provision                         = "${file(format("%s/../provision.sh", path.cwd))}"
 *   etcd_instance_type                    = "m3.medium"
 *   etcd_min_size                         = "1"
 *   etcd_max_size                         = "9"
 *   etcd_desired_capacity                 = "1"
 *   etcd_root_volume_size                 = "12"
 *   etcd_data_volume_size                 = "12"
-*   api_server_cert                       = "${file(format("%s/certs/apiserver.pem.enc.base", path.cwd))}"
-*   api_server_key                        = "${file(format("%s/certs/apiserver-key.pem.enc.base", path.cwd))}"
 *   controller_instance_type              = "m3.medium"
 *   controller_min_size                   = "1"
 *   controller_max_size                   = "3"
 *   controller_desired_capacity           = "1"
 *   controller_root_volume_size           = "12"
 *   controller_docker_volume_size         = "12"
-*   node_cert                             = "${file(format("%s/certs/node.pem.enc.base", path.cwd))}"
-*   node_key                              = "${file(format("%s/certs/node-key.pem.enc.base", path.cwd))}"
-*   api_server_client_cert                = "${file(format("%s/certs/apiserver-client.pem.enc.base", path.cwd))}"
-*   api_server_client_key                 = "${file(format("%s/certs/apiserver-client-key.pem.enc.base", path.cwd))}"
 *   node_instance_type                    = "m3.medium"
 *   node_min_size                         = "1"
 *   node_max_size                         = "18"
@@ -152,16 +138,8 @@ variable "cost_center" {
   description = "The cost center to attach resource usage."
 }
 
-variable "kms_key_arn" {
-  description = "The arn associated with the encryption key used for encrypting the certificates."
-}
-
-variable "root_cert" {
-  description = "The root certificate authority that all certificates belong to encoded in base64 format."
-}
-
-variable "intermediate_cert" {
-  description = "The intermediate certificate authority that all certificates belong to encoded in base64 format."
+variable "tls_provision" {
+  description = "The TLS ca and assets provision script."
 }
 
 variable "kubernetes_hyperkube_image_repo" {
@@ -272,17 +250,17 @@ resource "aws_security_group" "kubernetes" {
   }
 }
 
-# Certificates
-resource "aws_s3_bucket_object" "root_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/root-ca.pem.enc.base"
-  content = "${var.root_cert}"
-}
+/*
+* ------------------------------------------------------------------------------
+* Resources
+* ------------------------------------------------------------------------------
+*/
 
-resource "aws_s3_bucket_object" "intermediate_cert" {
+# Certificates Provision Script
+resource "aws_s3_bucket_object" "tls_provision" {
   bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/intermediate-ca.pem.enc.base"
-  content = "${var.intermediate_cert}"
+  key     = "cloudinit/common/tls/tls-provision.sh"
+  content = "${var.tls_provision}"
 }
 
 /*

@@ -13,12 +13,12 @@ coreos:
         [Unit]
         Description=Pulls and runs vault
         After=vault-init.service
-        
+
         [Service]
         Restart=on-failure
         ExecStartPre=-/bin/docker kill vault
         ExecStartPre=-/bin/docker rm vault
-        ExecStartPre=/bin/docker create --cap-add=IPC_LOCK --name vault -p 8200:8200 -p 8201:8201 -v /etc/vault/tls:/opt/etc/tls -v /opt/vault:/opt/etc/vault quay.io/concur_platform/vault:0.6.4-5b34ba3 /opt/bin/vault server -config=/opt/etc/vault/environment.config -log-level=info
+        ExecStartPre=/bin/docker create --cap-add=IPC_LOCK --name vault -p 8200:8200 -p 8201:8201 -v /etc/vault/tls:/opt/etc/tls -v /opt/vault:/opt/etc/vault quay.io/concur_platform/vault:0.7.2-80ed185 /opt/bin/vault server -config=/opt/etc/vault/environment.config -log-level=info
         ExecStart=/bin/docker start -a vault
         ExecStop=/bin/docker stop -t 2 vault
     - name: vault-init.service

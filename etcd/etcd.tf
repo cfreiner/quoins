@@ -8,30 +8,6 @@ variable "subnet_ids" {
   description = "A comma-separated list of subnet ids to use for the instances."
 }
 
-variable "etcd_server_cert" {
-  description = "The public certificate to be used by etcd servers encoded in base64 format."
-}
-
-variable "etcd_server_key" {
-  description = "The private key to be used by etcd servers encoded in base64 format."
-}
-
-variable "etcd_client_cert" {
-  description = "The public client certificate to be used for authenticating against etcd encoded in base64 format."
-}
-
-variable "etcd_client_key" {
-  description = "The client private key to be used for authenticating against etcd encoded in base64 format."
-}
-
-variable "etcd_peer_cert" {
-  description = "The public certificate to be used by etcd peers encoded in base64 format."
-}
-
-variable "etcd_peer_key" {
-  description = "The private key to be used by etcd peers encoded in base64 format."
-}
-
 variable "etcd_instance_type" {
   description = "The type of instance to use for the etcd cluster. Example: 'm3.medium'"
   default     = "m3.medium"
@@ -190,43 +166,6 @@ resource "aws_s3_bucket_object" "etcd" {
   content = "${data.template_file.etcd.rendered}"
 }
 
-# Certificates
-resource "aws_s3_bucket_object" "etcd_server_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/etcd/tls/etcd-server.pem.enc.base"
-  content = "${var.etcd_server_cert}"
-}
-
-resource "aws_s3_bucket_object" "etcd_server_key" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/etcd/tls/etcd-server-key.pem.enc.base"
-  content = "${var.etcd_server_key}"
-}
-
-resource "aws_s3_bucket_object" "etcd_client_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/etcd-client.pem.enc.base"
-  content = "${var.etcd_client_cert}"
-}
-
-resource "aws_s3_bucket_object" "etcd_client_key" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/common/tls/etcd-client-key.pem.enc.base"
-  content = "${var.etcd_client_key}"
-}
-
-resource "aws_s3_bucket_object" "etcd_peer_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/etcd/tls/etcd-peer.pem.enc.base"
-  content = "${var.etcd_peer_cert}"
-}
-
-resource "aws_s3_bucket_object" "etcd_peer_key" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/etcd/tls/etcd-peer-key.pem.enc.base"
-  content = "${var.etcd_peer_key}"
-}
-
 # Profile, Role, and Policy
 resource "aws_iam_instance_profile" "etcd" {
   name       = "${format("%s-%s-%s", var.name, var.region, var.version)}"
@@ -259,7 +198,6 @@ data "template_file" "etcd_policy" {
 
   vars {
     name        = "${var.name}"
-    kms_key_arn = "${var.kms_key_arn}"
   }
 }
 

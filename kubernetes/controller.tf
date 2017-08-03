@@ -4,14 +4,6 @@
 * ------------------------------------------------------------------------------
 */
 
-variable "api_server_cert" {
-  description = "The public certificate to be used by k8s api servers encoded in base64 format."
-}
-
-variable "api_server_key" {
-  description = "The private key to be used by k8s api servers encoded in base64 format."
-}
-
 variable "controller_instance_type" {
   description = "The type of instance to use for the controller cluster. Example: 'm3.medium'"
   default     = "m3.medium"
@@ -187,19 +179,6 @@ resource "aws_s3_bucket_object" "controller" {
   content = "${data.template_file.controller.rendered}"
 }
 
-# Certificates
-resource "aws_s3_bucket_object" "api_server_cert" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/controller/tls/api-server.pem.enc.base"
-  content = "${var.api_server_cert}"
-}
-
-resource "aws_s3_bucket_object" "api_server_key" {
-  bucket  = "${aws_s3_bucket.cluster.bucket}"
-  key     = "cloudinit/controller/tls/api-server-key.pem.enc.base"
-  content = "${var.api_server_key}"
-}
-
 # Profile, Role, and Policy
 resource "aws_iam_instance_profile" "controller" {
   name       = "${format("%s-controller-%s-%s", var.name, var.region, var.version)}"
@@ -232,7 +211,6 @@ data "template_file" "controller_policy" {
 
   vars {
     name        = "${var.name}"
-    kms_key_arn = "${var.kms_key_arn}"
   }
 }
 

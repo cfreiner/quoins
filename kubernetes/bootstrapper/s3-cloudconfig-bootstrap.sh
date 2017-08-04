@@ -25,7 +25,7 @@ instance_profile="$(curl -s http://169.254.169.254/latest/meta-data/iam/info \
 bucket="concur-${name}"
 
 # Determine our role
-role=$(echo "$instance_profile" | sed 's#${name}-##')
+role=$(echo "$instance_profile" | sed 's#${name}-##' | sed 's/-.*//')
 
 work_dir="/root/cloudinit"
 mkdir -m 700 -p "$work_dir"

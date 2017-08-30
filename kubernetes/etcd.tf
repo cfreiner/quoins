@@ -49,7 +49,7 @@ module "etcd" {
   vpc_id                    = "${var.vpc_id}"
   vpc_cidr                  = "${var.vpc_cidr}"
   availability_zones        = "${var.availability_zones}"
-  subnet_ids                = "${join(",", aws_subnet.internal.*.id)}"
+  subnet_ids                = "${var.internal_subnet_ids}"
   key_name                  = "${module.key_pair.key_name}"
   tls_provision             = "${var.tls_provision}"
   etcd_instance_type        = "${var.etcd_instance_type}"

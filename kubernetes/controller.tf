@@ -47,7 +47,7 @@ resource "aws_autoscaling_group" "controller" {
   max_size             = "${var.controller_max_size}"
   desired_capacity     = "${var.controller_desired_capacity}"
   availability_zones   = ["${split(",", var.availability_zones)}"]
-  vpc_zone_identifier  = ["${aws_subnet.internal.*.id}"]
+  vpc_zone_identifier  = ["${split(",", var.internal_subnet_ids)}"]
   health_check_type    = "EC2"
   force_delete         = true
   load_balancers       = ["${aws_elb.kubernetes_api.id}"]
@@ -89,7 +89,7 @@ resource "aws_launch_configuration" "controller" {
   iam_instance_profile = "${aws_iam_instance_profile.controller.name}"
   security_groups      = ["${aws_security_group.kubernetes.id}"]
   key_name             = "${module.key_pair.key_name}"
-  depends_on           = ["aws_subnet.internal", "aws_s3_bucket.cluster", "module.etcd", "aws_s3_bucket_object.controller", "aws_iam_instance_profile.controller", "aws_security_group.kubernetes"]
+  depends_on           = ["aws_s3_bucket.cluster", "module.etcd", "aws_s3_bucket_object.controller", "aws_iam_instance_profile.controller", "aws_security_group.kubernetes"]
 
   lifecycle {
     create_before_destroy = true
@@ -116,7 +116,7 @@ resource "aws_elb" "kubernetes_api" {
   name                = "${format("%s-k8s", var.name)}"
   connection_draining = true
   security_groups     = ["${aws_security_group.balancers.id}"]
-  subnets             = ["${aws_subnet.external.*.id}"]
+  subnets             = ["${split(",", var.elb_subnet_ids)}"]
 
   listener {
     instance_port     = 443

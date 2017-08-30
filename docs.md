@@ -127,6 +127,30 @@ provider "aws" {
 }
 ```
 
+# Internal Layout
+
+This module creates an internal network layout only with the following resources
+inside a network:
+
+1. An internal subnet for each availability zone in a region.
+
+Usage:
+
+```hcl
+module "internal_layout" {
+  source              = "github.com/concur/quoins//internal-layout"
+  vpc_id              = "vpc-*****"
+  availability_zones  = "us-west-2a,us-west-2b,us-west-2c"
+  internal_subnets    = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
+  name                = "prod-us-network-layout"
+  k8_cluster_name     = <kubernetes-quoin-name>
+}
+
+provider "aws" {
+  region = "us-west-2"
+}
+```
+
 ## Inputs
 
 | Name | Description | Default | Required |
@@ -201,9 +225,6 @@ bastions when the need arises. Currently we launch version 1.2.4 of Kubernetes.
 
 ## What's Inside
 
-* One public subnet and one private subnet in each availability zone.
-* Subnets are dynamic and react to the number of availability zones within the region.
-* A NAT gateway in each availability zone.
 * A security group for bastions to use.
 * CoreOS is used as the host operating system for all instances.
 * The certificates are used to completely secure the communication between etcd, controllers, and nodes.
@@ -229,36 +250,22 @@ bastions when the need arises. Currently we launch version 1.2.4 of Kubernetes.
 * IAM roles to give instances permission to access resources based on their role
 * Fluent/ElasticSearch/Kibana runs within the cluster to ship all logs to a central location. Only thing needed by the developer is to log to stdout or stderr.
 
-## Note
-
-__The TLS assets that you supply, must be encrypted with the supplied KMS Key ARN and encoded with base64.__
-
-Example:
-
-```
-aws --region us-west-2 kms encrypt \
-   --key-id 709b95f1-90b0-46d3-b1d3-619fb4dfb82a \
-   --plaintext fileb://$PWD/root-ca.pem \
-   --output text --query CiphertextBlob > "root-ca.pem.enc.base"
-```
-
 Usage:
 
 ```hcl
 module "kubernetes" {
   source                                = "github.com/concur/quoins//kubernetes"
   name                                  = "prod"
+  k8_cluster_name                       = "prod"
   role_type                             = "app1"
   cost_center                           = "1"
   region                                = "us-west-2"
-  vpc_id                                = "vpc-1234565"
+  vpc_id                                = "vpc-*****"
   vpc_cidr                              = "172.16.0.0/16"
-  internet_gateway_id                   = "igw-123456"
   availability_zones                    = "us-west-2a,us-west-2b,us-west-2c"
-  external_subnets                      = "172.16.0.0/24,172.16.1.0/24,172.16.2.0/24"
-  internal_subnets                      = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
+  elb_subnet_ids                        = "subnet-3b018d72,subnet-3bdcb65c,subnet-066e8b5d"
+  internal_subnet_ids                   = "subnet-3b018d72,subnet-3bdcb65c,subnet-066e8b5d"
   public_key                            = "${file(format("%s/keys/%s.pub", path.cwd, var.name))}"
-  kms_key_arn                           = "arn:aws:kms:us-west-2:208127133681:key/709b95f1-90b0-46d3-b1d3-619fb4dfb82a"
   root_cert                             = "${file(format("%s/certs/root-ca.pem.enc.base", path.cwd))}"
   intermediate_cert                     = "${file(format("%s/certs/intermediate-ca.pem.enc.base", path.cwd))}"
   etcd_server_cert                      = "${file(format("%s/certs/etcd-server.pem.enc.base", path.cwd))}"
@@ -298,7 +305,10 @@ module "kubernetes" {
   kubernetes_service_cidr               = "10.3.0.1/24"
   kubernetes_dns_service_ip             = "10.3.0.10"
   kubernetes_pod_cidr                   = "10.2.0.0/16"
+  bastion_security_group_id             = "sg-xxxxxxxx"
 }
+
+Note: This quoin can be used to build a k8 cluster using either the external-internal-layout quoin, or the internal-layout quoin, depending on the use case.
 
 provider "aws" {
   region = "us-west-2"
@@ -346,7 +356,6 @@ provider "aws" {
 | region | Region where resources will be created. | - | yes |
 | role_type | The role type to attach resource usage. | - | yes |
 | cost_center | The cost center to attach resource usage. | - | yes |
-| kms_key_arn | The arn associated with the encryption key used for encrypting the certificates. | - | yes |
 | root_cert | The root certificate authority that all certificates belong to encoded in base64 format. | - | yes |
 | intermediate_cert | The intermediate certificate authority that all certificates belong to encoded in base64 format. | - | yes |
 | kubernetes_hyperkube_image_repo | The hyperkube image repository to use. | `gcr.io/google_containers/hyperkube` | no |
@@ -358,8 +367,9 @@ provider "aws" {
 | vpc_cidr | A CIDR block for the VPC that specifies the set of IP addresses to use. | - | yes |
 | internet_gateway_id | The ID of the internet gateway that belongs to the VPC. | - | yes |
 | availability_zones | Comma separated list of availability zones for a region. | - | yes |
-| external_subnets | Comma separated list of CIDR's to use for the external subnets. | - | yes |
-| internal_subnets | Comma separated list of CIDR's to use for the internal subnets. | - | yes |
+| elb_subnet_ids | A comma-separated list of subnet ids to use for the instances. | - | yes |
+| internal_subnet_ids | A comma-separated list of subnet ids to use for the instances. | - | yes |
+| bastion_security_group_id | Reference to a security group for bastions to use. | - | yes |
 
 ## Outputs
 

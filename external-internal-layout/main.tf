@@ -56,6 +56,10 @@ variable "name" {
   description = "A name to tag the resources."
 }
 
+variable "k8_cluster_name" {
+  description = "The name of your k8 cluster name, i.e. your Kubernetes quoin name"
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -71,7 +75,8 @@ resource "aws_subnet" "external" {
   map_public_ip_on_launch = true
 
   tags {
-    Name = "${var.name}-${format("external-%03d", count.index+1)}"
+    Name              = "${var.name}-${format("external-%03d", count.index+1)}"
+    KubernetesCluster = "${var.k8_cluster_name}"
   }
 }
 

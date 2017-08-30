@@ -56,7 +56,7 @@ resource "aws_autoscaling_group" "node" {
   max_size             = "${var.node_max_size}"
   desired_capacity     = "${var.node_desired_capacity}"
   availability_zones   = ["${split(",", var.availability_zones)}"]
-  vpc_zone_identifier  = ["${aws_subnet.internal.*.id}"]
+  vpc_zone_identifier  = ["${split(",", var.internal_subnet_ids)}"]
   health_check_type    = "EC2"
   force_delete         = true
   launch_configuration = "${aws_launch_configuration.node.name}"
@@ -97,7 +97,7 @@ resource "aws_launch_configuration" "node" {
   iam_instance_profile = "${aws_iam_instance_profile.node.name}"
   security_groups      = ["${aws_security_group.kubernetes.id}"]
   key_name             = "${module.key_pair.key_name}"
-  depends_on           = ["aws_subnet.internal", "aws_s3_bucket.cluster", "aws_autoscaling_group.controller", "aws_launch_configuration.controller", "aws_s3_bucket_object.node", "aws_iam_instance_profile.node", "aws_security_group.kubernetes"]
+  depends_on           = ["aws_s3_bucket.cluster", "aws_autoscaling_group.controller", "aws_launch_configuration.controller", "aws_s3_bucket_object.node", "aws_iam_instance_profile.node", "aws_security_group.kubernetes"]
 
   lifecycle {
     create_before_destroy = true

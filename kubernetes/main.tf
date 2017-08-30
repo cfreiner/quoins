@@ -70,10 +70,9 @@
 *   region                                = "us-west-2"
 *   vpc_id                                = "vpc-1234565"
 *   vpc_cidr                              = "172.16.0.0/16"
-*   internet_gateway_id                   = "igw-123456"
 *   availability_zones                    = "us-west-2a,us-west-2b,us-west-2c"
-*   external_subnets                      = "172.16.0.0/24,172.16.1.0/24,172.16.2.0/24"
-*   internal_subnets                      = "172.16.3.0/24,172.16.4.0/24,172.16.5.0/24"
+*   elb_subnet_ids                        = "subnet-3b018d72,subnet-3bdcb65c,subnet-066e8b5d"
+*   internal_subnet_ids                   = "subnet-3b018d72,subnet-3bdcb65c,subnet-066e8b5d"
 *   public_key                            = "${file(format("%s/keys/%s.pub", path.cwd, var.name))}"
 *   tls_provision                         = "${file(format("%s/../provision.sh", path.cwd))}"
 *   etcd_instance_type                    = "m3.medium"
@@ -169,6 +168,26 @@ variable "kubernetes_pod_cidr" {
 
 variable "bastion_security_group_id" {
   description = "Security Group ID for bastion instance with external SSH allows ssh connections on port 22"
+}
+
+variable "vpc_id" {
+  description = "The ID of the VPC to create the resources within."
+}
+
+variable "vpc_cidr" {
+  description = "A CIDR block for the VPC that specifies the set of IP addresses to use."
+}
+
+variable "availability_zones" {
+  description = "Comma separated list of availability zones for a region."
+}
+
+variable "elb_subnet_ids" {
+  description = "A comma-separated list of subnet ids to use for the instances."
+}
+
+variable "internal_subnet_ids" {
+  description = "A comma-separated list of subnet ids to use for the instances."
 }
 
 /*

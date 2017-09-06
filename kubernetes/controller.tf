@@ -196,7 +196,7 @@ resource "aws_iam_role_policy" "controller_policy" {
 resource "aws_iam_role" "controller" {
   name               = "${format("%s-controller-%s-%s", var.name, var.region, var.version)}"
   path               = "/"
-  assume_role_policy = "${file(format("%s/policies/assume-role-policy.json", path.module))}"
+  assume_role_policy = "${data.template_file.assume_role_policy.rendered}"
 }
 
 /*

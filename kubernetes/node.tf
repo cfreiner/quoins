@@ -160,7 +160,7 @@ resource "aws_iam_role_policy" "node_policy" {
 resource "aws_iam_role" "node" {
   name               = "${format("%s-node-%s-%s", var.name, var.region, var.version)}"
   path               = "/"
-  assume_role_policy = "${file(format("%s/policies/assume-role-policy.json", path.module))}"
+  assume_role_policy = "${data.template_file.assume_role_policy.rendered}"
 }
 
 /*

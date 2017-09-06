@@ -175,6 +175,7 @@ data "template_file" "node_policy" {
 
   vars {
     name        = "${var.name}"
+    arn_region  = "${var.arn_region}"
   }
 }
 

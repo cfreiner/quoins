@@ -8,12 +8,12 @@
         "s3:Get*"
       ],
       "Resource": [
-        "arn:aws:s3:::concur-${name}",
-        "arn:aws:s3:::concur-${name}/cloudinit/common/tls/*",
-        "arn:aws:s3:::concur-${name}/cloudinit/node/*",
-        "arn:aws:s3:::concur-${name}-etcd",
-        "arn:aws:s3:::concur-${name}-etcd/cloudinit",
-        "arn:aws:s3:::concur-${name}-etcd/cloudinit/common/tls/*"
+        "arn:${arn_region}:s3:::concur-${name}",
+        "arn:${arn_region}:s3:::concur-${name}/cloudinit/common/tls/*",
+        "arn:${arn_region}:s3:::concur-${name}/cloudinit/node/*",
+        "arn:${arn_region}:s3:::concur-${name}-etcd",
+        "arn:${arn_region}:s3:::concur-${name}-etcd/cloudinit",
+        "arn:${arn_region}:s3:::concur-${name}-etcd/cloudinit/common/tls/*"
       ]
     },
     {

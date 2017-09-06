@@ -195,6 +195,11 @@ variable "assume_role_principal_service" {
   default     = "ec2.amazonaws.com"
 }
 
+variable "arn_region" {
+  description = "Amazon Resource Name based on region, aws for most regions and aws-cn for Beijing"
+  default = "aws"  
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources

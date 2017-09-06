@@ -211,6 +211,7 @@ data "template_file" "controller_policy" {
 
   vars {
     name        = "${var.name}"
+    arn_region  = "${var.arn_region}"
   }
 }
 

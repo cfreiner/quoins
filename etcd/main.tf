@@ -41,6 +41,16 @@ variable "availability_zones" {
   description = "Comma separated list of availability zones for a region."
 }
 
+variable "assume_role_principal_service" {
+  description = "Principal service used for assume role policy. More information can be found at https://docs.aws.amazon.com/general/latest/gr/rande.html#iam_region."
+  default     = "ec2.amazonaws.com"
+}
+
+variable "arn_region" {
+  description = "Amazon Resource Name based on region, aws for most regions and aws-cn for Beijing"
+  default = "aws"  
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -75,6 +85,14 @@ data "aws_ami" "coreos_ami" {
   filter {
     name   = "name"
     values = ["CoreOS-stable-*-hvm"]
+  }
+}
+
+data "template_file" "assume_role_policy" {
+  template = "${file(format("%s/policies/assume-role-policy.json", path.module))}"
+
+  vars {
+    assume_role_principal_service = "${var.assume_role_principal_service}"
   }
 }
 

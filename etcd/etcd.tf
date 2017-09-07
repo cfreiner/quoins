@@ -183,7 +183,7 @@ resource "aws_iam_role_policy" "etcd_policy" {
 resource "aws_iam_role" "etcd" {
   name               = "${format("%s-%s-%s", var.name, var.region, var.version)}"
   path               = "/"
-  assume_role_policy = "${file(format("%s/policies/assume-role-policy.json", path.module))}"
+  assume_role_policy = "${data.template_file.assume_role_policy.rendered}"
 }
 
 /*
@@ -198,6 +198,7 @@ data "template_file" "etcd_policy" {
 
   vars {
     name        = "${var.name}"
+    arn_region  = "${var.arn_region}"
   }
 }
 

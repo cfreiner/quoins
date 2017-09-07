@@ -7,10 +7,10 @@
         "s3:*"
       ],
       "Resource": [
-        "arn:aws:s3:::concur-${name}",
-        "arn:aws:s3:::concur-${name}/cloudinit",
-        "arn:aws:s3:::concur-${name}/cloudinit/common/tls/*",
-        "arn:aws:s3:::concur-${name}/cloudinit/etcd/*"
+        "arn:${arn_region}:s3:::concur-${name}",
+        "arn:${arn_region}:s3:::concur-${name}/cloudinit",
+        "arn:${arn_region}:s3:::concur-${name}/cloudinit/common/tls/*",
+        "arn:${arn_region}:s3:::concur-${name}/cloudinit/etcd/*"
       ]
     },
     {

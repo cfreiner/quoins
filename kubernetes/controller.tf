@@ -34,6 +34,11 @@ variable "controller_docker_volume_size" {
   default     = "12"
 }
 
+variable "is_k8s_elb_internal" {
+  description = "Specify if the k8s API is internal or external facing."
+  default     = false
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -117,6 +122,7 @@ resource "aws_elb" "kubernetes_api" {
   connection_draining = true
   security_groups     = ["${aws_security_group.balancers.id}"]
   subnets             = ["${split(",", var.elb_subnet_ids)}"]
+  internal            = "${var.is_k8s_elb_internal}"
 
   listener {
     instance_port     = 443

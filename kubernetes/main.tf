@@ -183,7 +183,7 @@ variable "availability_zones" {
 }
 
 variable "elb_subnet_ids" {
-  description = "A comma-separated list of subnet ids to use for the instances."
+  description = "A comma-separated list of subnet ids to use for the k8s API."
 }
 
 variable "internal_subnet_ids" {

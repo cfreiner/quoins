@@ -39,6 +39,11 @@ variable "is_k8s_elb_internal" {
   default     = false
 }
 
+variable "controller_encrypt_docker_volume" {
+  description = "Encrypt docker volume used by controller."
+  default     = true
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -109,7 +114,7 @@ resource "aws_launch_configuration" "controller" {
   # /var/lib/docker
   ebs_block_device = {
     device_name = "/dev/sdf"
-    encrypted   = true
+    encrypted   = "${var.controller_encrypt_docker_volume}"
     volume_type = "gp2"
     volume_size = "${var.controller_docker_volume_size}"
   }

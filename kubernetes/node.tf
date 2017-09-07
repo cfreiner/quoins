@@ -43,6 +43,21 @@ variable "node_logging_volume_size" {
   default     = "12"
 }
 
+variable "node_encrypt_docker_volume" {
+  description = "Encrypt docker volume used by node."
+  default     = true
+}
+
+variable "node_encrypt_data_volume" {
+  description = "Encrypt data volume used by node."
+  default     = true
+}
+
+variable "node_encrypt_logging_volume" {
+  description = "Encrypt logging volume used by node."
+  default     = true
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -112,7 +127,7 @@ resource "aws_launch_configuration" "node" {
   # /var/lib/docker
   ebs_block_device = {
     device_name = "/dev/sdf"
-    encrypted   = true
+    encrypted   = "${var.node_encrypt_docker_volume}"
     volume_type = "gp2"
     volume_size = "${var.node_docker_volume_size}"
   }
@@ -120,7 +135,7 @@ resource "aws_launch_configuration" "node" {
   # /opt/data
   ebs_block_device = {
     device_name = "/dev/sdg"
-    encrypted   = true
+    encrypted   = "${var.node_encrypt_data_volume}"
     volume_type = "gp2"
     volume_size = "${var.node_data_volume_size}"
   }
@@ -128,7 +143,7 @@ resource "aws_launch_configuration" "node" {
   # /opt/logging
   ebs_block_device = {
     device_name = "/dev/sdh"
-    encrypted   = true
+    encrypted   = "${var.node_encrypt_logging_volume}"
     volume_type = "gp2"
     volume_size = "${var.node_logging_volume_size}"
   }

@@ -46,6 +46,11 @@ variable "bastion_security_group_id" {
   description = "Security Group ID for bastion instance with external SSH allows ssh connections on port 22"
 }
 
+variable "etcd_encrypt_data_volume" {
+  description = "Encrypt data volume used by etcd."
+  default     = "true"
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -109,7 +114,7 @@ resource "aws_launch_configuration" "etcd" {
   # /var/lib/etcd
   ebs_block_device = {
     device_name = "/dev/sdf"
-    encrypted   = true
+    encrypted   = "${var.etcd_encrypt_data_volume}"
     volume_type = "gp2"
     volume_size = "${var.etcd_data_volume_size}"
   }

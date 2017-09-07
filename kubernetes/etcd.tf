@@ -34,6 +34,11 @@ variable "etcd_data_volume_size" {
   default     = "12"
 }
 
+variable "etcd_encrypt_data_volume" {
+  description = "Encrypt data volume used by etcd"
+  default     = "true"
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Modules
@@ -61,4 +66,5 @@ module "etcd" {
   bastion_security_group_id     = "${var.bastion_security_group_id}"
   assume_role_principal_service = "${var.assume_role_principal_service}"
   arn_region                    = "${var.arn_region}"
+  etcd_encrypt_data_volume      = "${var.etcd_encrypt_data_volume}"
 }

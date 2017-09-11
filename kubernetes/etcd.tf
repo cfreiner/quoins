@@ -67,4 +67,7 @@ module "etcd" {
   assume_role_principal_service = "${var.assume_role_principal_service}"
   arn_region                    = "${var.arn_region}"
   etcd_encrypt_data_volume      = "${var.etcd_encrypt_data_volume}"
+  system_environment            = "${var.system_environment}"
+  docker_environment            = "${var.docker_environment}"
+  user_environment              = "${var.user_environment}"
 }

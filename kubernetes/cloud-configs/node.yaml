@@ -385,3 +385,22 @@ write_files:
           user:
             client-certificate: /etc/kubernetes/tls/api-server-client.pem
             client-key: /etc/kubernetes/tls/api-server-client-key.pem
+  - path: /etc/systemd/system.conf.d/10-default-env.conf
+    filesystem: root
+    mode: 0644
+    contents:
+      inline: |
+        [Manager]
+        ${system_environment}
+  - path: /etc/docker-environment.env
+    filesystem: root
+    mode: 0644
+    contents:
+      inline: |
+        ${docker_environment}
+  - path: /etc/profile.env
+    filesystem: root
+    mode: 0644
+    contents:
+      inline: |
+        ${user_environment}

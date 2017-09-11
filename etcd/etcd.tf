@@ -51,6 +51,21 @@ variable "etcd_encrypt_data_volume" {
   default     = "true"
 }
 
+variable "system_environment" {
+  description = "Environment variables to be used system wide."
+  default     = ""
+}
+
+variable "docker_environment" {
+  description = "Environment variables to be used by Docker."
+  default     = ""
+}
+
+variable "user_environment" {
+  description = "Environment variables to be used by the user."
+  default     = ""
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -209,6 +224,12 @@ data "template_file" "etcd_policy" {
 
 data "template_file" "etcd" {
   template = "${file(format("%s/cloud-configs/etcd.yaml", path.module))}"
+
+  vars {
+    system_environment = "${var.system_environment}"
+    docker_environment = "${var.docker_environment}"
+    user_environment   = "${var.user_environment}"
+  }
 }
 
 /*

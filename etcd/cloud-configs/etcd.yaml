@@ -142,9 +142,29 @@ write_files:
       image=quay.io/concur_platform/etcd-aws-operator:0.0.1
       /usr/bin/docker run --rm \
         --env-file=/etc/quoin-environment \
+        --env-file=/etc/docker-environment.env \
         -v /var/run/coreos:/var/run/coreos \
         -v /etc/etcd/tls:/etc/etcd/tls \
         $image /etcd-aws-operator
 
       # Place etcd-environment
       /usr/bin/cp /var/run/coreos/etcd-environment /etc/etcd-environment
+  - path: /etc/systemd/system.conf.d/10-default-env.conf
+    filesystem: root
+    mode: 0644
+    contents:
+      inline: |
+        [Manager]
+        ${system_environment}
+  - path: /etc/docker-environment.env
+    filesystem: root
+    mode: 0644
+    contents:
+      inline: |
+        ${docker_environment}
+  - path: /etc/profile.env
+    filesystem: root
+    mode: 0644
+    contents:
+      inline: |
+        ${user_environment}

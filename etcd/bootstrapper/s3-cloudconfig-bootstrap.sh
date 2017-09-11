@@ -38,13 +38,13 @@ docker history "$image" > /dev/null 2>&1 || docker pull "$image"
 src="$cloudinit_src"
 dst="$cloudinit_dst"
 cmd="aws --region $region s3 cp --recursive $src $dst"
-docker run --rm --name s3cp-cloudinit -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
+docker run --rm --name s3cp-cloudinit --env-file /etc/docker-environment.env -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
 
 # Sync Common TLS Assets
 src="$cloudinit_common_tls_src"
 dst="$cloudinit_tls_dst"
 cmd="aws --region $region s3 cp --recursive $src $dst"
-docker run --rm --name s3cp-common-tls -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
+docker run --rm --name s3cp-common-tls --env-file /etc/docker-environment.env -v "$work_dir":"$work_dir" "$image" /bin/bash -c "$cmd"
 
 # Replace placeholders inside cloud-config
 sed -i -- 's/\\$private_ipv4/'$private_ipv4'/g; s/\\$public_ipv4/'$public_ipv4'/g' $work_dir/cloud-config.yaml

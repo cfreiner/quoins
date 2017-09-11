@@ -202,6 +202,9 @@ data "template_file" "node" {
     kubernetes_dns_service_ip       = "${var.kubernetes_dns_service_ip}"
     kubernetes_hyperkube_image_repo = "${var.kubernetes_hyperkube_image_repo}"
     kubernetes_version              = "${var.kubernetes_version}"
+    system_environment              = "${var.system_environment}"
+    docker_environment              = "${var.docker_environment}"
+    user_environment                = "${var.user_environment}"
   }
 }
 

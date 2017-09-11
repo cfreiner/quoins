@@ -200,6 +200,21 @@ variable "arn_region" {
   default = "aws"  
 }
 
+variable "system_environment" {
+  description = "Environment variables to be used system wide."
+  default     = ""
+}
+
+variable "docker_environment" {
+  description = "Environment variables to be used by Docker."
+  default     = ""
+}
+
+variable "user_environment" {
+  description = "Environment variables to be used by the user."
+  default     = ""
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources

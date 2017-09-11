@@ -236,6 +236,9 @@ data "template_file" "controller" {
     kubernetes_service_cidr         = "${var.kubernetes_service_cidr}"
     kubernetes_dns_service_ip       = "${var.kubernetes_dns_service_ip}"
     kubernetes_pod_cidr             = "${var.kubernetes_pod_cidr}"
+    system_environment              = "${var.system_environment}"
+    docker_environment              = "${var.docker_environment}"
+    user_environment                = "${var.user_environment}"
   }
 }
 

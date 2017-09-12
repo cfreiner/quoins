@@ -226,6 +226,33 @@ data "template_file" "controller_policy" {
   }
 }
 
+data "template_file" "system_proxy" {
+  template = "${file(format("%s/environment/system_proxy.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
+data "template_file" "docker_proxy" {
+  template = "${file(format("%s/environment/docker_proxy.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
+data "template_file" "user_proxy" {
+  template = "${file(format("%s/environment/user_proxy.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
 data "template_file" "controller" {
   template = "${file(format("%s/cloud-configs/controller.yaml", path.module))}"
 
@@ -236,9 +263,9 @@ data "template_file" "controller" {
     kubernetes_service_cidr         = "${var.kubernetes_service_cidr}"
     kubernetes_dns_service_ip       = "${var.kubernetes_dns_service_ip}"
     kubernetes_pod_cidr             = "${var.kubernetes_pod_cidr}"
-    system_environment              = "${var.system_environment}"
-    docker_environment              = "${var.docker_environment}"
-    user_environment                = "${var.user_environment}"
+    system_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.system_proxy.rendered : ""}"
+    docker_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.docker_proxy.rendered : ""}"
+    user_proxy                      = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.user_proxy.rendered : ""}"
   }
 }
 

@@ -37,9 +37,21 @@ cloudinit_common_tls_src="s3://$bucket/cloudinit/common/tls"
 cloudinit_etcd_tls_src="s3://$bucket-etcd/cloudinit/common/tls"
 cloudinit_tls_dst="$work_dir/tls"
 
+# Set proxy for Docker to use. If no proxy is supplied, this will be blank
+${docker_service_proxy}
+
+# Set environment variables for Docker to use. If no variables are supplied, file will be empty
+echo -e "${docker_environment}" > /etc/docker-environment.env
+
 # pull the IMAGE if not loaded
 image="quay.io/concur_platform/awscli:0.1.1"
-docker history "$image" > /dev/null 2>&1 || docker pull "$image"
+rc=-1
+until [ $rc -eq 0 ]
+do
+  docker history "$image" > /dev/null 2>&1 || docker pull "$image" && break
+  rc=$?
+  sleep 15
+done
 
 # Sync CloudInit
 src="$cloudinit_src"
@@ -96,6 +108,8 @@ docker ps -aq | xargs -r docker rm
 docker volume ls -q | xargs -r docker volume rm
 docker images -q | xargs -r docker rmi
 systemctl stop docker.service
+rm -rf /etc/systemd/system/docker.service.d
+rm /etc/docker-environment.env
 
 # Run cloud-init
 coreos-cloudinit --from-file="$work_dir/cloud-config.yaml"

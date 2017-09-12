@@ -666,17 +666,16 @@ write_files:
     mode: 0644
     contents:
       inline: |
-        [Manager]
-        ${system_environment}
+        ${system_proxy}
   - path: /etc/docker-environment.env
     filesystem: root
     mode: 0644
     contents:
       inline: |
-        ${docker_environment}
+        ${docker_proxy}
   - path: /etc/profile.env
     filesystem: root
     mode: 0644
     contents:
       inline: |
-        ${user_environment}}
+        ${user_proxy}

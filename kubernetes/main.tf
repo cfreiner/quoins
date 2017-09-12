@@ -200,18 +200,18 @@ variable "arn_region" {
   default = "aws"  
 }
 
-variable "system_environment" {
-  description = "Environment variables to be used system wide."
+variable "http_proxy" {
+  description = "Proxy server to use for http."
   default     = ""
 }
 
-variable "docker_environment" {
-  description = "Environment variables to be used by Docker."
+variable "https_proxy" {
+  description = "Proxy server to use for https."
   default     = ""
 }
 
-variable "user_environment" {
-  description = "Environment variables to be used by the user."
+variable "no_proxy" {
+  description = "List of domains or IP's that do not require a proxy."
   default     = ""
 }
 
@@ -313,11 +313,34 @@ resource "aws_s3_bucket_object" "tls_provision" {
 * ------------------------------------------------------------------------------
 */
 
+data "template_file" "docker_environment_bootstrap" {
+  template = "${file(format("%s/docker_proxy.config", path.module))}"
+
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
+data "template_file" "docker_service_proxy_bootstrap" {
+  template = "${file(format("%s/docker_service_proxy_bootstrap.config", path.module))}"
+
+  vars {
+    http_proxy         = "${var.http_proxy}"
+    https_proxy        = "${var.https_proxy}"
+    no_proxy           = "${var.no_proxy}"
+    docker_environment = "${data.template_file.docker_environment_bootstrap.rendered}"
+  }
+}
+
 data "template_file" "s3_cloudconfig_bootstrap" {
   template = "${file(format("%s/bootstrapper/s3-cloudconfig-bootstrap.sh", path.module))}"
 
   vars {
-    name = "${var.name}"
+    name                 = "${var.name}"
+    docker_environment   = "${data.template_file.docker_environment_bootstrap.rendered}"
+    docker_service_proxy = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.docker_service_proxy_bootstrap.rendered : ""}"
   }
 }
 

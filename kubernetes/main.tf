@@ -314,7 +314,7 @@ resource "aws_s3_bucket_object" "tls_provision" {
 */
 
 data "template_file" "docker_environment_bootstrap" {
-  template = "${file(format("%s/docker_proxy.config", path.module))}"
+  template = "${file(format("%s/environment/docker_proxy.config", path.module))}"
 
   vars {
     http_proxy  = "${var.http_proxy}"
@@ -324,7 +324,7 @@ data "template_file" "docker_environment_bootstrap" {
 }
 
 data "template_file" "docker_service_proxy_bootstrap" {
-  template = "${file(format("%s/docker_service_proxy_bootstrap.config", path.module))}"
+  template = "${file(format("%s/environment/docker_service_proxy_bootstrap.config", path.module))}"
 
   vars {
     http_proxy         = "${var.http_proxy}"

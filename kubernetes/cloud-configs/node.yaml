@@ -386,20 +386,17 @@ write_files:
             client-certificate: /etc/kubernetes/tls/api-server-client.pem
             client-key: /etc/kubernetes/tls/api-server-client-key.pem
   - path: /etc/systemd/system.conf.d/10-default-env.conf
-    filesystem: root
-    mode: 0644
-    contents:
-      inline: |
+    permissions: 0644
+    owner: root:root
+    content: |
         ${system_proxy}
   - path: /etc/docker-environment.env
-    filesystem: root
-    mode: 0644
-    contents:
-      inline: |
+    permissions: 0644
+    owner: root:root
+    content: |
         ${docker_proxy}
   - path: /etc/profile.env
-    filesystem: root
-    mode: 0644
-    contents:
-      inline: |
+    permissions: 0644
+    owner: root:root
+    content: |
         ${user_proxy}

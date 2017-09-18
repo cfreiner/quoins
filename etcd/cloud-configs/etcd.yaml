@@ -150,20 +150,17 @@ write_files:
       # Place etcd-environment
       /usr/bin/cp /var/run/coreos/etcd-environment /etc/etcd-environment
   - path: /etc/systemd/system.conf.d/10-default-env.conf
-    filesystem: root
-    mode: 0644
-    contents:
-      inline: |
+    permissions: 0644
+    owner: root:root
+    content: |
         ${system_proxy}
   - path: /etc/docker-environment.env
-    filesystem: root
-    mode: 0644
-    contents:
-      inline: |
+    permissions: 0644
+    owner: root:root
+    content: |
         ${docker_proxy}
   - path: /etc/profile.env
-    filesystem: root
-    mode: 0644
-    contents:
-      inline: |
+    permissions: 0644
+    owner: root:root
+    content: |
         ${user_proxy}

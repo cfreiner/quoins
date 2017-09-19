@@ -73,18 +73,18 @@ docker run --rm --name s3cp-common-tls --env-file /etc/docker-environment.env -v
 
 # Retrieving Etcd instances
 cmd="aws autoscaling describe-auto-scaling-groups --region $region --auto-scaling-group-name ${name}-etcd | jq -r '.AutoScalingGroups | length'"
-while [ $(docker run --rm --name etcd-instances \
+while [ $(docker run --rm --name etcd-instances --env-file /etc/docker-environment.env \
   "$image" /bin/bash -c "$cmd") -eq 0 ]
 do
   sleep 3m
 done
 
 cmd="aws autoscaling describe-auto-scaling-groups --region $region --auto-scaling-group-name ${name}-etcd | jq -r '.AutoScalingGroups[0].Instances[] | select(.LifecycleState  == \"InService\") | .InstanceId' | xargs"
-etcd_instance_ids=$(docker run --rm --name etcd-instances \
+etcd_instance_ids=$(docker run --rm --name etcd-instances --env-file /etc/docker-environment.env \
   "$image" /bin/bash -c "$cmd")
 
 cmd="aws ec2 describe-instances --region $region --instance-ids $etcd_instance_ids | jq -r '.Reservations[].Instances | map(\"https://\" + .PrivateDnsName + \":2379\")[]' | xargs | sed 's/  */,/g'"
-etcd_endpoint_urls=$(docker run --rm --name etcd-urls \
+etcd_endpoint_urls=$(docker run --rm --name etcd-urls --env-file /etc/docker-environment.env \
   "$image" /bin/bash -c "$cmd")
 
 # Replace placeholders inside cloud-config

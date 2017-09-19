@@ -44,6 +44,36 @@ variable "controller_encrypt_docker_volume" {
   default     = true
 }
 
+variable "kubedns_image_repo" {
+  description = "Docker image repository for kube dns image."
+  default     = "gcr.io/google_containers/kubedns-amd64"
+}
+
+variable "kubedns_version" {
+  description = "Version of kubedns"
+  default     = "1.8"
+}
+
+variable "kubednsmasq_image_repo" {
+  description = "Docker image repository for kube dnsmasq image."
+  default     = "gcr.io/google_containers/kube-dnsmasq-amd64"
+}
+
+variable "kubednsmasq_version" {
+  description = "Version of kubednsmasq"
+  default     = "1.4"
+}
+
+variable "exechealthz_image_repo" {
+  description = "Docker image repository for exec healthz image."
+  default     = "gcr.io/google_containers/exechealthz-amd64"
+}
+
+variable "exechealthz_version" {
+  description = "Version of exec healthz"
+  default     = "1.2"
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -260,6 +290,14 @@ data "template_file" "controller" {
     name                            = "${var.name}"
     kubernetes_hyperkube_image_repo = "${var.kubernetes_hyperkube_image_repo}"
     kubernetes_version              = "${var.kubernetes_version}"
+    kubedns_image_repo              = "${var.kubedns_image_repo}"
+    kubedns_version                 = "${var.kubedns_version}"
+    kubednsmasq_image_repo          = "${var.kubednsmasq_image_repo}"
+    kubednsmasq_version             = "${var.kubednsmasq_version}"
+    exechealthz_image_repo          = "${var.exechealthz_image_repo}"
+    exechealthz_version             = "${var.exechealthz_version}" 
+    pod_infra_image_repo            = "${var.pod_infra_image_repo}"
+    pod_infra_version               = "${var.pod_infra_version}"
     kubernetes_service_cidr         = "${var.kubernetes_service_cidr}"
     kubernetes_dns_service_ip       = "${var.kubernetes_dns_service_ip}"
     kubernetes_pod_cidr             = "${var.kubernetes_pod_cidr}"

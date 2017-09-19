@@ -151,6 +151,16 @@ variable "kubernetes_version" {
   default     = "v1.6.2_coreos.0"
 }
 
+variable "pod_infra_image_repo" {
+  description = "Docker image repository for the pod infra image."
+  default     = "gcr.io/google_containers/pause-amd64"
+}
+
+variable "pod_infra_version" {
+  description = "Version of pod infra"
+  default     = "3.0"
+}
+
 variable "kubernetes_service_cidr" {
   description = "A CIDR block that specifies the set of IP addresses to use for Kubernetes services."
   default     = "10.3.0.1/24"

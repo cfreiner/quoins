@@ -229,6 +229,8 @@ data "template_file" "node" {
     kubernetes_dns_service_ip       = "${var.kubernetes_dns_service_ip}"
     kubernetes_hyperkube_image_repo = "${var.kubernetes_hyperkube_image_repo}"
     kubernetes_version              = "${var.kubernetes_version}"
+    pod_infra_image_repo            = "${var.pod_infra_image_repo}"
+    pod_infra_version               = "${var.pod_infra_version}"
     system_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.node_system_proxy.rendered : ""}"
     docker_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.node_docker_proxy.rendered : ""}"
     user_proxy                      = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.node_user_proxy.rendered : ""}"

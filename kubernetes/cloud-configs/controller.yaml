@@ -33,6 +33,7 @@ coreos:
         ExecStartPre=/usr/bin/systemctl is-active flanneld.service
         Environment=KUBELET_IMAGE_TAG=${kubernetes_version}
         Environment="RKT_RUN_ARGS=--uuid-file-save=/var/run/kubelet-pod.uuid \
+          --set-env-file=/etc/docker-environment.env \
           --volume var-log,kind=host,source=/var/log \
           --mount volume=var-log,target=/var/log \
           --volume dns,kind=host,source=/etc/resolv.conf \

@@ -1,0 +1,7 @@
+          env:
+          - name: HTTP_PROXY
+            value: ${http_proxy}
+          - name: HTTPS_PROXY
+            value: ${https_proxy}
+          - name: NO_PROXY
+            value: ${no_proxy}

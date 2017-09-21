@@ -74,6 +74,25 @@ variable "exechealthz_version" {
   default     = "1.2"
 }
 
+variable "controller_kube_proxy_environment" {
+  description = "Environment for Kubernetes proxy pod."
+  default     = ""
+}
+
+variable "controller_kube_apiserver_environment" {
+  description = "Environment for Kubernetes apiserver pod."
+  default     = ""
+}
+
+variable "controller_kube_controller_manager_environment" {
+  description = "Environment for Kubernetes controller manager pod."
+  default     = ""
+}
+
+variable "controller_kube_scheduler_environment" {
+  description = "Environment for Kubernetes scheduler pod."
+  default     = ""
+}
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -283,27 +302,67 @@ data "template_file" "controller_user_proxy" {
   }
 }
 
+data "template_file" "controller_kube_proxy_environment" {
+  template = "${file(format("%s/environment/kubernetes_environment.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
+data "template_file" "controller_kube_apiserver_environment" {
+  template = "${file(format("%s/environment/kubernetes_environment.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
+data "template_file" "controller_kube_controller_manager_environment" {
+  template = "${file(format("%s/environment/kubernetes_environment.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
+data "template_file" "controller_kube_scheduler_environment" {
+  template = "${file(format("%s/environment/kubernetes_environment.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
 data "template_file" "controller" {
   template = "${file(format("%s/cloud-configs/controller.yaml", path.module))}"
 
   vars {
-    name                            = "${var.name}"
-    kubernetes_hyperkube_image_repo = "${var.kubernetes_hyperkube_image_repo}"
-    kubernetes_version              = "${var.kubernetes_version}"
-    kubedns_image_repo              = "${var.kubedns_image_repo}"
-    kubedns_version                 = "${var.kubedns_version}"
-    kubednsmasq_image_repo          = "${var.kubednsmasq_image_repo}"
-    kubednsmasq_version             = "${var.kubednsmasq_version}"
-    exechealthz_image_repo          = "${var.exechealthz_image_repo}"
-    exechealthz_version             = "${var.exechealthz_version}" 
-    pod_infra_image_repo            = "${var.pod_infra_image_repo}"
-    pod_infra_version               = "${var.pod_infra_version}"
-    kubernetes_service_cidr         = "${var.kubernetes_service_cidr}"
-    kubernetes_dns_service_ip       = "${var.kubernetes_dns_service_ip}"
-    kubernetes_pod_cidr             = "${var.kubernetes_pod_cidr}"
-    system_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_system_proxy.rendered : ""}"
-    docker_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_docker_proxy.rendered : ""}"
-    user_proxy                      = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_user_proxy.rendered : ""}"
+    name                                                = "${var.name}"
+    kubernetes_hyperkube_image_repo                     = "${var.kubernetes_hyperkube_image_repo}"
+    kubernetes_version                                  = "${var.kubernetes_version}"
+    kubedns_image_repo                                  = "${var.kubedns_image_repo}"
+    kubedns_version                                     = "${var.kubedns_version}"
+    kubednsmasq_image_repo                              = "${var.kubednsmasq_image_repo}"
+    kubednsmasq_version                                 = "${var.kubednsmasq_version}"
+    exechealthz_image_repo                              = "${var.exechealthz_image_repo}"
+    exechealthz_version                                 = "${var.exechealthz_version}" 
+    pod_infra_image_repo                                = "${var.pod_infra_image_repo}"
+    pod_infra_version                                   = "${var.pod_infra_version}"
+    kubernetes_service_cidr                             = "${var.kubernetes_service_cidr}"
+    kubernetes_dns_service_ip                           = "${var.kubernetes_dns_service_ip}"
+    kubernetes_pod_cidr                                 = "${var.kubernetes_pod_cidr}"
+    system_proxy                                        = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_system_proxy.rendered : ""}"
+    docker_proxy                                        = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_docker_proxy.rendered : ""}"
+    user_proxy                                          = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_user_proxy.rendered : ""}"
+    controller_kube_proxy_environment                   = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_kube_proxy_environment.rendered : ""}"
+    controller_kube_apiserver_environment               = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_kube_apiserver_environment.rendered : ""}"
+    controller_kube_controller_manager_environment      = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_kube_controller_manager_environment.rendered : ""}"
+    controller_kube_scheduler_environment               = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.controller_kube_scheduler_environment.rendered : ""}"
   }
 }
 

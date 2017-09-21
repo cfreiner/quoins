@@ -341,6 +341,7 @@ write_files:
         containers:
         - name: kube-proxy
           image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          ${node_kube_proxy_environment}
           command:
           - /hyperkube
           - proxy

@@ -58,6 +58,11 @@ variable "node_encrypt_logging_volume" {
   default     = true
 }
 
+variable "node_kube_proxy_environment" {
+  description = "Environment for Kubernetes proxy pod."
+  default     = ""
+}
+
 /*
 * ------------------------------------------------------------------------------
 * Resources
@@ -221,6 +226,15 @@ data "template_file" "node_user_proxy" {
   }
 }
 
+data "template_file" "node_kube_proxy_environment" {
+  template = "${file(format("%s/environment/kubernetes_environment.config", path.module))}"
+  vars {
+    http_proxy  = "${var.http_proxy}"
+    https_proxy = "${var.https_proxy}"
+    no_proxy    = "${var.no_proxy}"
+  }
+}
+
 data "template_file" "node" {
   template = "${file(format("%s/cloud-configs/node.yaml", path.module))}"
 
@@ -234,6 +248,7 @@ data "template_file" "node" {
     system_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.node_system_proxy.rendered : ""}"
     docker_proxy                    = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.node_docker_proxy.rendered : ""}"
     user_proxy                      = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.node_user_proxy.rendered : ""}"
+    node_kube_proxy_environment     = "${var.http_proxy != "" || var.https_proxy != "" || var.no_proxy != "" ? data.template_file.node_kube_proxy_environment.rendered : ""}"
   }
 }
 

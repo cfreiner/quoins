@@ -315,6 +315,7 @@ write_files:
         containers:
         - name: kube-proxy
           image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          ${controller_kube_proxy_environment}
           command:
           - /hyperkube
           - proxy
@@ -342,6 +343,7 @@ write_files:
         containers:
         - name: kube-apiserver
           image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          ${controller_kube_apiserver_environment}
           command:
           - /hyperkube
           - apiserver
@@ -410,6 +412,7 @@ write_files:
         containers:
         - name: kube-controller-manager
           image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          ${controller_kube_controller_manager_environment}
           command:
           - /hyperkube
           - controller-manager
@@ -455,6 +458,7 @@ write_files:
         containers:
         - name: kube-scheduler
           image: ${kubernetes_hyperkube_image_repo}:${kubernetes_version}
+          ${controller_kube_scheduler_environment}
           command:
           - /hyperkube
           - scheduler

@@ -251,6 +251,8 @@ write_files:
     content: |
       #!/bin/bash
 
+      set -e -o pipefail
+
       mkdir -p /etc/kubernetes/tls
       chmod 755 /root/cloudinit/tls/tls-provision.sh
       cd /root/cloudinit/tls
